@@ -16,7 +16,7 @@
       <!-- ─── HOME ─────────────────────────────────────────────────── -->
       <section class="view" id="view-home">
         <div class="home-hero">
-          <div class="home-glyph">🐛</div>
+          <img class="home-glyph" src="/icons/bugcircle.svg" alt="" />
           <h1 class="page-title">Vox Bugs</h1>
           <p class="sub">Structured bug reports for every Vox app.<br />Faster fixes, clearer updates.</p>
         </div>
@@ -120,7 +120,12 @@
         </form>
 
         <div id="success" class="success hidden">
-          <div class="check">✓</div>
+          <div class="check">
+            <svg viewBox="0 0 24 24" width="34" height="34" aria-hidden="true">
+              <path d="M5 12.5l4.5 4.5L20 6" fill="none" stroke="currentColor"
+                stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
           <h2 class="page-title">Bug submitted</h2>
           <p>Your report was received as <b id="success-id"></b>.</p>
           <p class="sub">You'll get an update in Telegram when its status changes.</p>
@@ -147,13 +152,16 @@
     <!-- ─── BOTTOM NAV ─────────────────────────────────────────────── -->
     <nav id="nav" aria-label="Primary">
       <button type="button" class="nav-btn" data-goto="home" aria-label="Home">
-        <span class="nav-glyph">🏠</span><span class="nav-label">Home</span>
+        <img class="nav-glyph" src="/icons/home.svg" alt="" />
+        <span class="nav-label">Home</span>
       </button>
       <button type="button" class="nav-btn" data-goto="create" aria-label="Report a bug">
-        <span class="nav-glyph">🐛</span><span class="nav-label">Create</span>
+        <img class="nav-glyph" src="/icons/create.svg" alt="" />
+        <span class="nav-label">Create</span>
       </button>
       <button type="button" class="nav-btn" data-goto="history" aria-label="My reports">
-        <span class="nav-glyph">📜</span><span class="nav-label">History</span>
+        <img class="nav-glyph" src="/icons/clockbook.svg" alt="" />
+        <span class="nav-label">History</span>
       </button>
     </nav>
 

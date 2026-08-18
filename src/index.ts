@@ -62,8 +62,11 @@ export default {
         headers: { "content-type": "text/plain" },
       });
     }
-    if (url.pathname.startsWith("/app")) {
-      // Serve /app/* via the ASSETS binding. Trailing / → index.html.
+    // Static assets served from /public/*.
+    // /app or /app/ → /app/index.html
+    // /app/anything → /app/anything
+    // /icons/*      → /icons/* (Mini App SVGs)
+    if (url.pathname.startsWith("/app") || url.pathname.startsWith("/icons/")) {
       let assetPath = url.pathname;
       if (assetPath === "/app" || assetPath === "/app/") assetPath = "/app/index.html";
       const assetReq = new Request(new URL(assetPath, req.url).toString(), req);

@@ -31,7 +31,9 @@ export function goto(view: ViewName): void {
   for (const btn of $$<HTMLButtonElement>(".nav-btn")) {
     btn.classList.toggle("active", btn.dataset.goto === view);
   }
-  requireEl("main").scrollTo({ top: 0, behavior: "instant" as ScrollBehavior });
-  window.scrollTo({ top: 0 });
+  // Scroll to top defensively — some webviews don't implement Element.scrollTo
+  // with options and would throw silently otherwise.
+  try { requireEl("main").scrollTop = 0; } catch { /* noop */ }
+  try { window.scrollTo(0, 0); } catch { /* noop */ }
   if (view === "history") void loadHistory();
 }

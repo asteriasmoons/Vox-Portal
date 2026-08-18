@@ -1,47 +1,46 @@
-/* Vox Bugs Mini App — rounded / black typography, respects Telegram theme
-   variables and safe-area insets so Telegram's own chips at the top
-   (close / menu button when launched outside a chat) don't overlap us. */
+/* Vox Bugs Mini App — rounded / black typography, minimal gradient theme,
+   respects Telegram theme variables and safe-area insets so Telegram's
+   own chips at the top don't overlap us. */
 
 :root {
-  --bg:            var(--tg-theme-bg-color, #101014);
-  --bg-elev:       var(--tg-theme-secondary-bg-color, #1a1a22);
-  --card:          var(--tg-theme-secondary-bg-color, #1a1a22);
-  --text:          var(--tg-theme-text-color, #f4f4f7);
-  --subtext:       var(--tg-theme-subtitle-text-color, #a4a4b0);
-  --hint:          var(--tg-theme-hint-color, #8a8a95);
-  --link:          var(--tg-theme-link-color, #8ab4ff);
-  --accent:        var(--tg-theme-button-color, #6b8afd);
-  --accent-text:   var(--tg-theme-button-text-color, #ffffff);
-  --danger:        #ff5c5c;
-  --success:       #4ade80;
-  --border:        rgba(255, 255, 255, 0.08);
-  --border-strong: rgba(255, 255, 255, 0.14);
+  /* Palette — sunset gradient over black. */
+  --bg:            #060505;
+  --bg-elev:       #14100c;
+  --card:          #1a1410;
+  --text:          #fdf6ec;
+  --subtext:       #b8ab9a;
+  --hint:          #8f8474;
+  --link:          #ffb14a;
+  --accent:        #ff8a2b;   /* orange */
+  --accent-2:      #ffd23a;   /* yellow */
+  --accent-text:   #1a0e00;
+  --danger:        #ff5c73;
+  --success:       #77e08c;
+  --border:        rgba(255, 200, 120, 0.10);
+  --border-strong: rgba(255, 200, 120, 0.20);
   --radius:        16px;
   --radius-lg:     20px;
 
-  /* Rounded typography stack. On Apple platforms this resolves to
-     SF Pro Rounded; elsewhere it falls back to Nunito or a system UI font.
-     Users following our house style get the same look. */
+  /* Rounded stack. On Apple platforms this resolves to SF Pro Rounded;
+     elsewhere it falls back to Nunito or a system UI font. */
   --font-rounded:
-    ui-rounded,
-    "SF Pro Rounded",
-    -apple-system,
-    "Nunito",
-    "Segoe UI Rounded",
-    system-ui,
-    Roboto,
-    "Helvetica Neue",
-    sans-serif;
+    ui-rounded, "SF Pro Rounded", -apple-system, "Nunito",
+    "Segoe UI Rounded", system-ui, Roboto, "Helvetica Neue", sans-serif;
 
-  /* Safe areas. We reserve enough vertical space at the top for BOTH
-     the iOS status bar AND Telegram's own close/menu chips that overlay
-     the top of the WebView when the Mini App is launched from outside a
-     chat (attachment menu, deep link, etc.). 56px covers every case
-     Telegram documents; when env() reports more (large notch), we honor
-     that. */
+  /* Enough vertical space to clear Telegram's own top chips + iOS notch. */
   --safe-top:    max(env(safe-area-inset-top), 56px);
   --safe-bottom: max(env(safe-area-inset-bottom), 12px);
-  --nav-height:  72px;
+  --nav-height:  76px;
+
+  /* Gradient tokens — reused for background, buttons, and active nav.
+     Yellow at the top-right, orange fading through the middle, black
+     everywhere else. Radials so we don't get harsh banding. */
+  --grad-bg:
+    radial-gradient(1100px 780px at 90% -10%, rgba(255, 210, 58, 0.22), transparent 60%),
+    radial-gradient(900px 700px at 10% 110%, rgba(255, 138, 43, 0.20), transparent 55%),
+    linear-gradient(180deg, #0a0705 0%, #050403 100%);
+  --grad-button: linear-gradient(135deg, var(--accent-2) 0%, var(--accent) 55%, #ff5a1f 100%);
+  --grad-active: linear-gradient(135deg, var(--accent-2), var(--accent));
 }
 
 * { box-sizing: border-box; }
@@ -49,7 +48,8 @@
 html, body {
   margin: 0;
   padding: 0;
-  background: var(--bg);
+  background: var(--grad-bg);
+  background-attachment: fixed;
   color: var(--text);
   font-family: var(--font-rounded);
   font-size: 15px;
@@ -59,11 +59,10 @@ html, body {
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* The reserved strip Telegram paints its chips into. */
+/* Reserved strip Telegram paints its chips into. Transparent so gradient shows through. */
 #tg-safe-top {
   height: var(--safe-top);
   width: 100%;
-  background: var(--bg);
 }
 
 main {
@@ -73,22 +72,19 @@ main {
 }
 
 /* ── Typography — rounded, black weight ───────────────── */
-.page-title,
-h1, h2, h3 {
+.page-title, h1, h2, h3 {
   font-family: var(--font-rounded);
-  font-weight: 900;   /* black — per house style */
+  font-weight: 900;
   letter-spacing: -0.01em;
   color: var(--text);
   margin: 0;
 }
-
-.page-title { font-size: 26px; line-height: 1.2; }
+.page-title { font-size: 28px; line-height: 1.15; }
 .hdr .sub, .home-hero .sub {
   color: var(--subtext);
   margin: 6px 0 20px;
   font-weight: 600;
 }
-
 .card h2 {
   font-size: 12px;
   font-weight: 900;
@@ -97,8 +93,6 @@ h1, h2, h3 {
   color: var(--subtext);
   margin: 0 0 12px;
 }
-
-/* Buttons, labels — same rounded family. */
 button, input, textarea, select { font-family: var(--font-rounded); }
 
 /* ── Views + visibility ──────────────────────────────── */
@@ -108,7 +102,9 @@ button, input, textarea, select { font-family: var(--font-rounded); }
 
 /* ── Cards ───────────────────────────────────────────── */
 .card {
-  background: var(--card);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0) 40%),
+    var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 18px;
@@ -129,7 +125,7 @@ input, textarea, select {
   display: block;
   width: 100%;
   margin-top: 6px;
-  background: var(--bg);
+  background: rgba(0,0,0,0.35);
   color: var(--text);
   border: 1.5px solid var(--border-strong);
   border-radius: 12px;
@@ -139,27 +135,25 @@ input, textarea, select {
   outline: none;
   appearance: none;
   -webkit-appearance: none;
-  transition: border-color 120ms ease;
+  transition: border-color 120ms ease, background 120ms ease;
 }
 select {
   background-image:
     linear-gradient(45deg, transparent 50%, var(--subtext) 50%),
-    linear-gradient(135deg, var(--subtext) 50%, transparent 50%);
+    linear-gradient(135deg, var(--subtext) 50%, transparent 50%),
+    linear-gradient(180deg, rgba(255,255,255,0.02), rgba(0,0,0,0.35));
   background-position:
     calc(100% - 20px) 50%,
-    calc(100% - 14px) 50%;
-  background-size: 6px 6px, 6px 6px;
-  background-repeat: no-repeat;
+    calc(100% - 14px) 50%,
+    0 0;
+  background-size: 6px 6px, 6px 6px, 100% 100%;
+  background-repeat: no-repeat, no-repeat, no-repeat;
   padding-right: 36px;
 }
 textarea { resize: vertical; min-height: 84px; }
-input:focus, textarea:focus, select:focus { border-color: var(--accent); }
+input:focus, textarea:focus, select:focus { border-color: var(--accent); background: rgba(0,0,0,0.5); }
 
-.row.two {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 10px;
-}
+.row.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 @media (max-width: 380px) { .row.two { grid-template-columns: 1fr; } }
 
 .req  { color: var(--danger); margin-left: 2px; font-weight: 900; }
@@ -167,11 +161,11 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); }
 
 /* ── Attachments ─────────────────────────────────────── */
 .filepick {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 12px 16px;
+  padding: 14px 16px;
   border: 1.5px dashed var(--border-strong);
   border-radius: 12px;
   color: var(--text);
@@ -179,46 +173,28 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); }
   cursor: pointer;
   width: 100%;
   margin-top: 4px;
+  background: rgba(255,255,255,0.02);
 }
 .filepick input { display: none; }
-
 .files { list-style: none; padding: 0; margin: 12px 0 0; }
 .files li {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  display: flex; align-items: center; gap: 10px;
   padding: 10px 12px;
   border: 1px solid var(--border);
   border-radius: 12px;
   margin-bottom: 8px;
-  background: var(--bg);
+  background: rgba(0,0,0,0.3);
 }
-.files li .name {
-  flex: 1;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 13px;
-  font-weight: 700;
-}
+.files li .name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; font-weight: 700; }
 .files li .size { color: var(--subtext); font-size: 12px; font-weight: 600; }
 .files li .prog { color: var(--subtext); font-size: 12px; font-weight: 700; }
-.files li .rm {
-  background: none;
-  border: 0;
-  color: var(--danger);
-  font-size: 20px;
-  line-height: 1;
-  cursor: pointer;
-  padding: 2px 6px;
-}
+.files li .rm { background: none; border: 0; color: var(--danger); font-size: 20px; line-height: 1; cursor: pointer; padding: 2px 6px; }
 .files li.err { border-color: var(--danger); }
 
 /* ── Buttons ─────────────────────────────────────────── */
-.primary,
-.ghost {
+.primary, .ghost {
   width: 100%;
-  padding: 14px 18px;
+  padding: 15px 18px;
   border-radius: 14px;
   font-size: 16px;
   font-weight: 900;
@@ -228,10 +204,12 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); }
   margin-top: 4px;
 }
 .primary {
-  background: var(--accent);
+  background: var(--grad-button);
   color: var(--accent-text);
+  box-shadow: 0 10px 24px -10px rgba(255, 138, 43, 0.55);
 }
-.primary:disabled { opacity: 0.5; cursor: default; }
+.primary:active { transform: translateY(1px); }
+.primary:disabled { opacity: 0.5; cursor: default; box-shadow: none; }
 .ghost {
   background: transparent;
   color: var(--text);
@@ -242,14 +220,12 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); }
 /* ── Success view ────────────────────────────────────── */
 .success { text-align: center; padding: 32px 8px; }
 .success .check {
-  width: 68px; height: 68px;
+  width: 72px; height: 72px;
   border-radius: 50%;
-  background: var(--success);
+  background: linear-gradient(135deg, var(--success) 0%, #22c55e 100%);
   color: #062615;
-  font-size: 36px;
-  line-height: 68px;
+  display: flex; align-items: center; justify-content: center;
   margin: 0 auto 16px;
-  font-weight: 900;
 }
 .success h2 { font-size: 22px; }
 .success .sub { color: var(--subtext); margin: 6px 0 24px; font-weight: 600; }
@@ -262,9 +238,9 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); }
   margin-top: 4px;
 }
 .top-error {
-  background: rgba(255, 92, 92, 0.12);
+  background: rgba(255, 92, 115, 0.12);
   color: var(--danger);
-  border: 1px solid rgba(255, 92, 92, 0.3);
+  border: 1px solid rgba(255, 92, 115, 0.3);
   border-radius: 12px;
   padding: 12px 14px;
   margin-bottom: 12px;
@@ -273,71 +249,49 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); }
 }
 
 /* ── Home view ───────────────────────────────────────── */
-.home-hero {
-  text-align: center;
-  padding: 24px 12px 12px;
-}
+.home-hero { text-align: center; padding: 20px 12px 12px; }
 .home-glyph {
-  font-size: 56px;
-  line-height: 1;
-  margin-bottom: 10px;
+  width: 72px; height: 72px;
+  display: block;
+  margin: 0 auto 12px;
 }
 .home-actions { padding: 20px; }
 .home-tips h2 { color: var(--subtext); }
-.tips {
-  margin: 0;
-  padding-left: 22px;
-  color: var(--text);
-  font-weight: 700;
-}
+.tips { margin: 0; padding-left: 22px; color: var(--text); font-weight: 700; }
 .tips li { margin-bottom: 6px; }
 
 /* ── History view ───────────────────────────────────── */
 .history { list-style: none; padding: 0; margin: 0; }
 .history li {
-  background: var(--card);
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0) 40%),
+    var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
   padding: 14px 16px;
   margin-bottom: 10px;
 }
 .history .row1 {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 4px;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; margin-bottom: 4px;
 }
-.history .pubid {
-  font-weight: 900;
-  letter-spacing: 0.02em;
-}
+.history .pubid { font-weight: 900; letter-spacing: 0.02em; }
 .history .status-pill {
-  font-size: 11px;
-  font-weight: 900;
+  font-size: 11px; font-weight: 900;
   padding: 4px 10px;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255,255,255,0.08);
   color: var(--text);
   text-transform: uppercase;
   letter-spacing: 0.06em;
   white-space: nowrap;
 }
 .history .title {
-  font-weight: 800;
-  color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
+  font-weight: 800; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis;
+  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
 }
-.history .meta {
-  color: var(--subtext);
-  font-size: 12px;
-  font-weight: 700;
-  margin-top: 6px;
-}
+.history .meta { color: var(--subtext); font-size: 12px; font-weight: 700; margin-top: 6px; }
 .empty { text-align: center; color: var(--subtext); font-weight: 700; }
 .empty .primary { margin-top: 14px; }
 
@@ -347,9 +301,9 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); }
   left: 0; right: 0; bottom: 0;
   height: calc(var(--nav-height) + var(--safe-bottom));
   padding-bottom: var(--safe-bottom);
-  background: color-mix(in oklab, var(--bg-elev) 92%, transparent);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: linear-gradient(180deg, rgba(23,23,31,0.75), rgba(13,13,19,0.95));
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
   border-top: 1px solid var(--border);
   display: flex;
   align-items: stretch;
@@ -365,12 +319,37 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); }
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 2px;
+  gap: 4px;
   cursor: pointer;
   font-family: var(--font-rounded);
   font-weight: 900;
   padding: 6px 4px;
+  transition: color 120ms ease, transform 120ms ease;
 }
-.nav-btn .nav-glyph { font-size: 22px; line-height: 1; }
-.nav-btn .nav-label { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; }
-.nav-btn.active { color: var(--accent); }
+.nav-btn:active { transform: scale(0.96); }
+.nav-btn .nav-glyph {
+  width: 26px; height: 26px;
+  object-fit: contain;
+  opacity: 0.7;
+  transition: opacity 120ms ease, filter 120ms ease;
+}
+.nav-btn .nav-label {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+/* Active tab: warm-gradient text via background-clip and a color-shifted icon.
+   The `filter` recolors the SVG (assumed monochrome) toward the orange accent. */
+.nav-btn.active { color: transparent; }
+.nav-btn.active .nav-label {
+  background: var(--grad-active);
+  -webkit-background-clip: text;
+          background-clip: text;
+  color: transparent;
+}
+.nav-btn.active .nav-glyph {
+  opacity: 1;
+  filter:
+    brightness(0) saturate(100%)
+    invert(64%) sepia(85%) saturate(1400%) hue-rotate(357deg) brightness(103%) contrast(101%);
+}
