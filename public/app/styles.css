@@ -1,16 +1,47 @@
-/* Vox Bugs Mini App — respects Telegram theme variables when available. */
+/* Vox Bugs Mini App — rounded / black typography, respects Telegram theme
+   variables and safe-area insets so Telegram's own chips at the top
+   (close / menu button when launched outside a chat) don't overlap us. */
+
 :root {
   --bg:            var(--tg-theme-bg-color, #101014);
+  --bg-elev:       var(--tg-theme-secondary-bg-color, #1a1a22);
   --card:          var(--tg-theme-secondary-bg-color, #1a1a22);
-  --text:          var(--tg-theme-text-color, #f2f2f4);
-  --subtext:       var(--tg-theme-subtitle-text-color, #a0a0ab);
+  --text:          var(--tg-theme-text-color, #f4f4f7);
+  --subtext:       var(--tg-theme-subtitle-text-color, #a4a4b0);
   --hint:          var(--tg-theme-hint-color, #8a8a95);
   --link:          var(--tg-theme-link-color, #8ab4ff);
   --accent:        var(--tg-theme-button-color, #6b8afd);
   --accent-text:   var(--tg-theme-button-text-color, #ffffff);
   --danger:        #ff5c5c;
-  --border:        rgba(255,255,255,0.08);
-  --radius:        14px;
+  --success:       #4ade80;
+  --border:        rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.14);
+  --radius:        16px;
+  --radius-lg:     20px;
+
+  /* Rounded typography stack. On Apple platforms this resolves to
+     SF Pro Rounded; elsewhere it falls back to Nunito or a system UI font.
+     Users following our house style get the same look. */
+  --font-rounded:
+    ui-rounded,
+    "SF Pro Rounded",
+    -apple-system,
+    "Nunito",
+    "Segoe UI Rounded",
+    system-ui,
+    Roboto,
+    "Helvetica Neue",
+    sans-serif;
+
+  /* Safe areas. We reserve enough vertical space at the top for BOTH
+     the iOS status bar AND Telegram's own close/menu chips that overlay
+     the top of the WebView when the Mini App is launched from outside a
+     chat (attachment menu, deep link, etc.). 56px covers every case
+     Telegram documents; when env() reports more (large notch), we honor
+     that. */
+  --safe-top:    max(env(safe-area-inset-top), 56px);
+  --safe-bottom: max(env(safe-area-inset-bottom), 12px);
+  --nav-height:  72px;
 }
 
 * { box-sizing: border-box; }
@@ -20,49 +51,77 @@ html, body {
   padding: 0;
   background: var(--bg);
   color: var(--text);
-  font: 15px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--font-rounded);
+  font-size: 15px;
+  line-height: 1.4;
   min-height: 100dvh;
-  padding-bottom: env(safe-area-inset-bottom);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* The reserved strip Telegram paints its chips into. */
+#tg-safe-top {
+  height: var(--safe-top);
+  width: 100%;
+  background: var(--bg);
 }
 
 main {
   max-width: 640px;
   margin: 0 auto;
-  padding: 20px 16px 40px;
+  padding: 8px 16px calc(var(--nav-height) + var(--safe-bottom) + 24px);
 }
 
-.hdr h1 {
-  font-size: 24px;
-  font-weight: 800;
+/* ── Typography — rounded, black weight ───────────────── */
+.page-title,
+h1, h2, h3 {
+  font-family: var(--font-rounded);
+  font-weight: 900;   /* black — per house style */
   letter-spacing: -0.01em;
-  margin: 4px 0 4px;
-}
-.hdr .sub {
-  color: var(--subtext);
-  margin: 0 0 20px;
+  color: var(--text);
+  margin: 0;
 }
 
+.page-title { font-size: 26px; line-height: 1.2; }
+.hdr .sub, .home-hero .sub {
+  color: var(--subtext);
+  margin: 6px 0 20px;
+  font-weight: 600;
+}
+
+.card h2 {
+  font-size: 12px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--subtext);
+  margin: 0 0 12px;
+}
+
+/* Buttons, labels — same rounded family. */
+button, input, textarea, select { font-family: var(--font-rounded); }
+
+/* ── Views + visibility ──────────────────────────────── */
+.view { animation: fade 180ms ease-out; }
+.hidden { display: none !important; }
+@keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
+
+/* ── Cards ───────────────────────────────────────────── */
 .card {
   background: var(--card);
   border: 1px solid var(--border);
   border-radius: var(--radius);
-  padding: 16px;
-  margin-bottom: 16px;
-}
-.card h2 {
-  font-size: 12px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--subtext);
-  margin: 0 0 12px;
+  padding: 18px;
+  margin-bottom: 14px;
 }
 
+/* ── Form fields ─────────────────────────────────────── */
 label {
   display: block;
   font-size: 13px;
+  font-weight: 700;
   color: var(--subtext);
-  margin: 0 0 12px;
+  margin: 0 0 14px;
 }
 label:last-child { margin-bottom: 0; }
 
@@ -72,49 +131,66 @@ input, textarea, select {
   margin-top: 6px;
   background: var(--bg);
   color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 10px 12px;
-  font: inherit;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 12px;
+  padding: 12px 14px;
+  font-size: 15px;
+  font-weight: 600;
   outline: none;
   appearance: none;
   -webkit-appearance: none;
+  transition: border-color 120ms ease;
 }
-textarea { resize: vertical; min-height: 72px; }
-input:focus, textarea:focus, select:focus {
-  border-color: var(--accent);
+select {
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--subtext) 50%),
+    linear-gradient(135deg, var(--subtext) 50%, transparent 50%);
+  background-position:
+    calc(100% - 20px) 50%,
+    calc(100% - 14px) 50%;
+  background-size: 6px 6px, 6px 6px;
+  background-repeat: no-repeat;
+  padding-right: 36px;
 }
+textarea { resize: vertical; min-height: 84px; }
+input:focus, textarea:focus, select:focus { border-color: var(--accent); }
 
 .row.two {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 10px;
 }
-@media (max-width: 380px) {
-  .row.two { grid-template-columns: 1fr; }
-}
+@media (max-width: 380px) { .row.two { grid-template-columns: 1fr; } }
 
-.req { color: var(--danger); margin-left: 2px; }
-.hint {
-  display: block;
-  color: var(--hint);
-  font-size: 12px;
-  margin-top: 6px;
-}
+.req  { color: var(--danger); margin-left: 2px; font-weight: 900; }
+.hint { display: block; color: var(--hint); font-size: 12px; margin-top: 6px; font-weight: 600; }
 
-.files {
-  list-style: none;
-  padding: 0;
-  margin: 12px 0 0;
+/* ── Attachments ─────────────────────────────────────── */
+.filepick {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 12px 16px;
+  border: 1.5px dashed var(--border-strong);
+  border-radius: 12px;
+  color: var(--text);
+  font-weight: 800;
+  cursor: pointer;
+  width: 100%;
+  margin-top: 4px;
 }
+.filepick input { display: none; }
+
+.files { list-style: none; padding: 0; margin: 12px 0 0; }
 .files li {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 10px;
+  padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: 10px;
-  margin-bottom: 6px;
+  border-radius: 12px;
+  margin-bottom: 8px;
   background: var(--bg);
 }
 .files li .name {
@@ -123,67 +199,178 @@ input:focus, textarea:focus, select:focus {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 13px;
+  font-weight: 700;
 }
-.files li .size { color: var(--subtext); font-size: 12px; }
+.files li .size { color: var(--subtext); font-size: 12px; font-weight: 600; }
+.files li .prog { color: var(--subtext); font-size: 12px; font-weight: 700; }
 .files li .rm {
   background: none;
   border: 0;
   color: var(--danger);
-  font-size: 18px;
+  font-size: 20px;
   line-height: 1;
   cursor: pointer;
   padding: 2px 6px;
 }
-.files li .prog {
-  color: var(--subtext);
-  font-size: 12px;
-}
 .files li.err { border-color: var(--danger); }
 
-.primary {
+/* ── Buttons ─────────────────────────────────────────── */
+.primary,
+.ghost {
   width: 100%;
-  padding: 14px 16px;
-  background: var(--accent);
-  color: var(--accent-text);
-  border: 0;
-  border-radius: 12px;
+  padding: 14px 18px;
+  border-radius: 14px;
   font-size: 16px;
-  font-weight: 700;
+  font-weight: 900;
   letter-spacing: 0.01em;
   cursor: pointer;
+  border: 0;
+  margin-top: 4px;
+}
+.primary {
+  background: var(--accent);
+  color: var(--accent-text);
 }
 .primary:disabled { opacity: 0.5; cursor: default; }
-
-.success {
-  text-align: center;
-  padding: 40px 20px;
+.ghost {
+  background: transparent;
+  color: var(--text);
+  border: 1.5px solid var(--border-strong);
+  margin-top: 10px;
 }
+
+/* ── Success view ────────────────────────────────────── */
+.success { text-align: center; padding: 32px 8px; }
 .success .check {
-  width: 64px; height: 64px;
+  width: 68px; height: 68px;
   border-radius: 50%;
-  background: #1e7a3a;
-  color: white;
-  font-size: 34px;
-  line-height: 64px;
+  background: var(--success);
+  color: #062615;
+  font-size: 36px;
+  line-height: 68px;
   margin: 0 auto 16px;
+  font-weight: 900;
 }
-.success h2 { margin: 0 0 6px; font-size: 22px; font-weight: 800; }
-.success .sub { color: var(--subtext); margin: 6px 0 24px; }
+.success h2 { font-size: 22px; }
+.success .sub { color: var(--subtext); margin: 6px 0 24px; font-weight: 600; }
 
-.hidden { display: none; }
-
+/* ── Error banners ───────────────────────────────────── */
 .field-error {
   color: var(--danger);
   font-size: 12px;
+  font-weight: 700;
   margin-top: 4px;
 }
-
 .top-error {
-  background: rgba(255,92,92,0.12);
+  background: rgba(255, 92, 92, 0.12);
   color: var(--danger);
-  border: 1px solid rgba(255,92,92,0.3);
-  border-radius: 10px;
-  padding: 10px 12px;
+  border: 1px solid rgba(255, 92, 92, 0.3);
+  border-radius: 12px;
+  padding: 12px 14px;
   margin-bottom: 12px;
   font-size: 13px;
+  font-weight: 700;
 }
+
+/* ── Home view ───────────────────────────────────────── */
+.home-hero {
+  text-align: center;
+  padding: 24px 12px 12px;
+}
+.home-glyph {
+  font-size: 56px;
+  line-height: 1;
+  margin-bottom: 10px;
+}
+.home-actions { padding: 20px; }
+.home-tips h2 { color: var(--subtext); }
+.tips {
+  margin: 0;
+  padding-left: 22px;
+  color: var(--text);
+  font-weight: 700;
+}
+.tips li { margin-bottom: 6px; }
+
+/* ── History view ───────────────────────────────────── */
+.history { list-style: none; padding: 0; margin: 0; }
+.history li {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+  margin-bottom: 10px;
+}
+.history .row1 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 4px;
+}
+.history .pubid {
+  font-weight: 900;
+  letter-spacing: 0.02em;
+}
+.history .status-pill {
+  font-size: 11px;
+  font-weight: 900;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  white-space: nowrap;
+}
+.history .title {
+  font-weight: 800;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.history .meta {
+  color: var(--subtext);
+  font-size: 12px;
+  font-weight: 700;
+  margin-top: 6px;
+}
+.empty { text-align: center; color: var(--subtext); font-weight: 700; }
+.empty .primary { margin-top: 14px; }
+
+/* ── Bottom nav ──────────────────────────────────────── */
+#nav {
+  position: fixed;
+  left: 0; right: 0; bottom: 0;
+  height: calc(var(--nav-height) + var(--safe-bottom));
+  padding-bottom: var(--safe-bottom);
+  background: color-mix(in oklab, var(--bg-elev) 92%, transparent);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: stretch;
+  justify-content: space-around;
+  z-index: 20;
+}
+.nav-btn {
+  flex: 1;
+  background: none;
+  border: 0;
+  color: var(--subtext);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  cursor: pointer;
+  font-family: var(--font-rounded);
+  font-weight: 900;
+  padding: 6px 4px;
+}
+.nav-btn .nav-glyph { font-size: 22px; line-height: 1; }
+.nav-btn .nav-label { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; }
+.nav-btn.active { color: var(--accent); }

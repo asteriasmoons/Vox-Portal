@@ -1,6 +1,19 @@
 // Vox Bugs Bot — canonical enums for categories, severities, statuses.
 // These strings are stored in D1 verbatim; do not rename without a migration.
 
+export const APPS = [
+  "Asterium",
+  "Lunixia",
+  "Lurelia",
+  "Loomey",
+  "VoxTerm",
+  "Seery",
+  "Tally",
+  "Markly",
+  "Lunelia",
+] as const;
+export type AppName = (typeof APPS)[number];
+
 export const CATEGORIES = [
   { id: "ui",             label: "UI / Visual",       hint: "Layout, colors, or something that just looks off." },
   { id: "crash",          label: "Crash",             hint: "The app closes or freezes." },

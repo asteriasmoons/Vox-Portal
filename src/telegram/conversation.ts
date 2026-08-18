@@ -7,6 +7,7 @@
 import type { Env } from "../config";
 import { sendMessage, type TelegramMessage } from "./api";
 import {
+  APPS,
   CATEGORIES,
   SEVERITIES,
   FREQUENCIES,
@@ -194,10 +195,11 @@ export async function handleWizardCallback(
   if (!s) return false;
 
   // wiz:<step>:<value>
-  const m = data.match(/^wiz:(category|severity|frequency):(.+)$/);
+  const m = data.match(/^wiz:(app|category|severity|frequency):(.+)$/);
   if (!m) return false;
   const [, step, value] = m;
-  if (step === "category") s.draft.category = value as CategoryId;
+  if (step === "app") s.draft.app = value;
+  else if (step === "category") s.draft.category = value as CategoryId;
   else if (step === "severity") s.draft.severity = value as SeverityId;
   else if (step === "frequency") s.draft.frequency = value as FrequencyId;
   advance(s);
@@ -238,7 +240,14 @@ function advance(s: Session) {
 async function promptFor(env: Env, chatId: number, step: Step, draft?: Draft) {
   switch (step) {
     case "app":
-      await sendMessage(env, chatId, "Which app is this about? (e.g. Vox, Lurelia)");
+      await sendMessage(env, chatId, "Which app is this about?", {
+        reply_markup: {
+          inline_keyboard: chunk(
+            APPS.map((a) => ({ text: a, callback_data: `wiz:app:${a}` })),
+            2,
+          ),
+        },
+      });
       return;
     case "app_version":
       await sendMessage(env, chatId, "What app <b>version</b> are you on? (e.g. 1.2.0 — or type <b>skip</b>)", { parse_mode: "HTML" });

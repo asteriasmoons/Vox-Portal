@@ -5,6 +5,7 @@ import { getConfig } from "./api";
 import { showTopError } from "./ui";
 
 export async function loadFormConfig(): Promise<void> {
+  const appSelect = requireEl<HTMLSelectElement>("#app-select");
   const catSelect = requireEl<HTMLSelectElement>("#category-select");
   const sevSelect = requireEl<HTMLSelectElement>("#severity-select");
   const freqSelect = requireEl<HTMLSelectElement>("#frequency-select");
@@ -19,6 +20,12 @@ export async function loadFormConfig(): Promise<void> {
     return;
   }
 
+  for (const name of cfg.apps) {
+    const opt = document.createElement("option");
+    opt.value = name;
+    opt.textContent = name;
+    appSelect.appendChild(opt);
+  }
   for (const c of cfg.categories) {
     const opt = document.createElement("option");
     opt.value = c.id;

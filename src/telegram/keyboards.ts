@@ -38,7 +38,7 @@ export function statusPickerKeyboard(bugId: number) {
 }
 
 export function severityPickerKeyboard(bugId: number) {
-  const rows = SEVERITIES.map((s) => [
+  const rows: { text: string; callback_data: string }[][] = SEVERITIES.map((s) => [
     { text: s.label, callback_data: `act:severity:${bugId}:${s.id}` },
   ]);
   rows.push([{ text: "‹ Back", callback_data: `menu:back:${bugId}` }]);

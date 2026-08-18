@@ -5,6 +5,17 @@ import { attachments, hasPending } from "./attachments";
 import { clearErrors, showFieldErrors, showTopError, showSuccess } from "./ui";
 import { submitReport } from "./api";
 
+export function resetForm(): void {
+  const form = requireEl<HTMLFormElement>("#form");
+  const btn = requireEl<HTMLButtonElement>("#submit-btn");
+  const success = requireEl("#success");
+  form.reset();
+  form.classList.remove("hidden");
+  success.classList.add("hidden");
+  btn.disabled = false;
+  btn.textContent = "Submit report";
+}
+
 export function initSubmit(): void {
   const form = requireEl<HTMLFormElement>("#form");
   const btn = requireEl<HTMLButtonElement>("#submit-btn");

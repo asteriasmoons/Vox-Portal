@@ -7,6 +7,7 @@ const H_INIT = "x-telegram-init-data";
 export interface ConfigOption { id: string; label: string; hint?: string }
 export interface ConfigResponse {
   ok: true;
+  apps: string[];
   categories: ConfigOption[];
   severities: ConfigOption[];
   frequencies: ConfigOption[];

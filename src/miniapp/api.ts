@@ -5,7 +5,7 @@
 import type { Env } from "../config";
 import { validateInitData } from "../telegram/initdata";
 import { createBug, type IncomingAttachment } from "../bugs/service";
-import { CATEGORIES, SEVERITIES, FREQUENCIES, CATEGORY_IDS, SEVERITY_IDS } from "../bugs/constants";
+import { APPS, CATEGORIES, SEVERITIES, FREQUENCIES, CATEGORY_IDS, SEVERITY_IDS } from "../bugs/constants";
 import { listBugsByReporter } from "../db/queries";
 import { publicIdOf } from "../bugs/formatting";
 import { log } from "../util/log";
@@ -30,6 +30,7 @@ function badRequest(msg: string) {
 export async function handleConfig(): Promise<Response> {
   return json({
     ok: true,
+    apps: APPS,
     categories: CATEGORIES,
     severities: SEVERITIES,
     frequencies: FREQUENCIES,
@@ -49,20 +50,24 @@ export async function handleUpload(env: Env, req: Request): Promise<Response> {
 
   const form = await req.formData();
   const file = form.get("file");
-  if (!(file instanceof File)) return badRequest("missing file");
-  if (file.size > MAX_ATTACHMENT_BYTES) return badRequest("file too large");
+  // FormDataEntryValue is File | string in the Workers runtime; do a duck
+  // check rather than `instanceof File` (the File constructor isn't in
+  // @cloudflare/workers-types' type surface, though the value is present).
+  if (!file || typeof file === "string") return badRequest("missing file");
+  const asFile = file as unknown as { size: number; name: string; type: string; stream: () => ReadableStream };
+  if (asFile.size > MAX_ATTACHMENT_BYTES) return badRequest("file too large");
 
-  const key = `uploads/${user.id}/${crypto.randomUUID()}-${sanitizeName(file.name)}`;
-  await env.ATTACHMENTS.put(key, file.stream(), {
-    httpMetadata: { contentType: file.type || "application/octet-stream" },
-    customMetadata: { uploader: String(user.id), original_name: file.name },
+  const key = `uploads/${user.id}/${crypto.randomUUID()}-${sanitizeName(asFile.name)}`;
+  await env.ATTACHMENTS.put(key, asFile.stream(), {
+    httpMetadata: { contentType: asFile.type || "application/octet-stream" },
+    customMetadata: { uploader: String(user.id), original_name: asFile.name },
   });
   return json({
     ok: true,
     key,
-    mime: file.type || "application/octet-stream",
-    name: file.name,
-    size: file.size,
+    mime: asFile.type || "application/octet-stream",
+    name: asFile.name,
+    size: asFile.size,
   });
 }
 
@@ -117,8 +122,9 @@ export async function handleSubmit(env: Env, req: Request): Promise<Response> {
         app_build: nz(payload.app_build),
         device: nz(payload.device),
         os: nz(payload.os),
-        category: payload.category,
-        severity: payload.severity,
+        // Payload was validated to be within our enum sets above.
+        category: payload.category as import("../bugs/constants").CategoryId,
+        severity: payload.severity as import("../bugs/constants").SeverityId,
         title: payload.title.trim(),
         actual_behavior: payload.actual_behavior.trim(),
         expected_behavior: nz(payload.expected_behavior),
