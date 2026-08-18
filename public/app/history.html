@@ -3,35 +3,28 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Vox Bugs</title>
+    <title>My Reports · Vox Bugs</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <link rel="stylesheet" href="./styles.css" />
   </head>
-  <body data-page="home">
+  <body data-page="history">
     <div id="tg-safe-top" aria-hidden="true"></div>
     <main id="app">
-      <div class="home-hero">
-        <img class="home-glyph" src="/icons/bugcircle.svg" alt="" />
-        <h1 class="page-title">Vox Bugs</h1>
-        <p class="sub">Structured bug reports for every Vox app.<br />Faster fixes, clearer updates.</p>
-      </div>
+      <header class="hdr">
+        <h1 class="page-title">My Reports</h1>
+        <p class="sub">Every bug you've filed and its current status.</p>
+      </header>
 
-      <div class="card home-actions">
+      <div id="history-empty" class="card empty hidden">
+        <p>No reports yet. When you file one, it'll show up here.</p>
         <a class="primary nav-link" href="./create.html">Report a bug</a>
-        <a class="ghost nav-link" href="./history.html">View my reports</a>
       </div>
-
-      <div class="card home-tips">
-        <h2>How it works</h2>
-        <ol class="tips">
-          <li>Pick the app and describe what happened.</li>
-          <li>Add screenshots or a screen recording.</li>
-          <li>Get status updates right here as we fix it.</li>
-        </ol>
-      </div>
+      <div id="history-loading" class="card empty">Loading…</div>
+      <ul id="history-list" class="history hidden"></ul>
     </main>
+
     <nav id="nav" aria-label="Primary">
-      <a class="nav-btn active" href="./index.html" aria-label="Home" aria-current="page">
+      <a class="nav-btn" href="./index.html" aria-label="Home">
         <img class="nav-glyph" src="/icons/home.svg" alt="" />
         <span class="nav-label">Home</span>
       </a>
@@ -39,7 +32,7 @@
         <img class="nav-glyph" src="/icons/create.svg" alt="" />
         <span class="nav-label">Create</span>
       </a>
-      <a class="nav-btn" href="./history.html" aria-label="My reports">
+      <a class="nav-btn active" href="./history.html" aria-label="My reports" aria-current="page">
         <img class="nav-glyph" src="/icons/clockbook.svg" alt="" />
         <span class="nav-label">History</span>
       </a>

@@ -1,35 +1,13 @@
-// Bottom nav + view switching. Views are <section class="view"> with ids
-// view-home / view-create / view-history.
+// Page navigation for the three separate Mini App destinations.
 
-import { $, $$, requireEl } from "./dom";
-import { loadHistory } from "./history";
+export type PageName = "home" | "create" | "history";
 
-export type ViewName = "home" | "create" | "history";
+const PAGE_PATHS: Record<PageName, string> = {
+  home: "./index.html",
+  create: "./create.html",
+  history: "./history.html",
+};
 
-export function initNav(): void {
-  for (const btn of $$<HTMLElement>("[data-goto]")) {
-    btn.onclick = () => {
-      const to = btn.dataset.goto as ViewName | undefined;
-      if (to) goto(to);
-    };
-  }
-  goto("home");
-}
-
-export function goto(view: ViewName): void {
-  for (const name of ["home", "create", "history"] as const) {
-    const section = requireEl<HTMLElement>(`#view-${name}`);
-    section.classList.toggle("active-view", name === view);
-  }
-
-  for (const btn of $$<HTMLButtonElement>(".nav-btn")) {
-    const active = btn.dataset.goto === view;
-    btn.classList.toggle("active", active);
-    btn.setAttribute("aria-selected", String(active));
-  }
-
-  requireEl("#app").scrollTop = 0;
-  window.scrollTo(0, 0);
-
-  if (view === "history") void loadHistory();
+export function goto(page: PageName): void {
+  window.location.href = PAGE_PATHS[page];
 }
