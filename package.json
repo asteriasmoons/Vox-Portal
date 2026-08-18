@@ -5,16 +5,26 @@
   "description": "Vox Bugs Bot — standalone Telegram bug-reporting bot + Mini App on Cloudflare Workers.",
   "main": "src/index.ts",
   "scripts": {
-    "dev": "wrangler dev",
+    "build:ui": "esbuild src/miniapp-ui/main.ts --bundle --format=esm --target=es2020 --minify --sourcemap --outfile=public/app/app.js",
+    "watch:ui": "esbuild src/miniapp-ui/main.ts --bundle --format=esm --target=es2020 --sourcemap --watch --outfile=public/app/app.js",
+    "dev": "npm run build:ui && wrangler dev",
+    "predeploy": "npm run build:ui",
     "deploy": "wrangler deploy",
     "db:init:local": "wrangler d1 execute vox_bugs --local --file=./schema.sql",
     "db:init:remote": "wrangler d1 execute vox_bugs --remote --file=./schema.sql",
     "set-webhook": "node scripts/set-webhook.mjs",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc -p tsconfig.ui.json --noEmit"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20250801.0",
+    "esbuild": "^0.24.0",
     "typescript": "^5.5.0",
     "wrangler": "^3.90.0"
+  },
+  "allowScripts": {
+    "fsevents@2.3.3": true,
+    "sharp@0.33.5": true,
+    "workerd@1.20250718.0": true,
+    "esbuild@0.17.19": true
   }
 }

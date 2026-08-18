@@ -4,7 +4,7 @@
 
 import type { Env } from "../config";
 import { discussionChatId } from "../config";
-import { handleCommand } from "./commands";
+import { handleCommand, ensureCommandsRegistered } from "./commands";
 import { handleWizardMessage, handleWizardCallback, getSession } from "./conversation";
 import { handleAdminCallback, handleAdminGroupCommand } from "./admin";
 import { recordDiscussionMirror } from "./channel";
@@ -31,6 +31,10 @@ export async function dispatchUpdate(env: Env, update: Update): Promise<void> {
     log.info("duplicate_update_ignored", { update_id: update.update_id });
     return;
   }
+
+  // Auto-register slash-command menu on first webhook after deploy.
+  // Cheap KV read guarded so it only actually hits Telegram once per version.
+  await ensureCommandsRegistered(env);
 
   try {
     if (update.callback_query) {
