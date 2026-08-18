@@ -19,7 +19,7 @@ export function initNav(): void {
 export function goto(view: ViewName): void {
   for (const name of ["home", "create", "history"] as const) {
     const section = requireEl<HTMLElement>(`#view-${name}`);
-    section.style.display = name === view ? "block" : "none";
+    section.classList.toggle("active-view", name === view);
   }
 
   for (const btn of $$<HTMLButtonElement>(".nav-btn")) {
