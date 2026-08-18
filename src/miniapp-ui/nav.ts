@@ -7,17 +7,17 @@ import { loadHistory } from "./history";
 export type ViewName = "home" | "create" | "history";
 
 export function initNav(): void {
-  // Wire every data-goto button (nav bar, hero CTAs, empty-state buttons).
-  document.addEventListener("click", (ev) => {
-    const target = ev.target as HTMLElement | null;
-    if (!target) return;
-    const btn = target.closest<HTMLElement>("[data-goto]");
-    if (!btn) return;
-    const to = btn.dataset.goto as ViewName | undefined;
-    if (!to) return;
-    ev.preventDefault();
-    goto(to);
-  });
+  // Wire every navigation control directly. Telegram's iOS WebView can be
+  // inconsistent with delegated click targets inside nested button content.
+  for (const btn of $$<HTMLElement>("[data-goto]")) {
+    btn.addEventListener("click", (ev) => {
+      const to = btn.dataset.goto as ViewName | undefined;
+      if (!to) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      goto(to);
+    });
+  }
 
   goto("home");
 }
