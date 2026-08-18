@@ -100,7 +100,7 @@ button, input, textarea, select { font-family: var(--font-rounded); }
 body[data-view="home"] #view-home,
 body[data-view="create"] #view-create,
 body[data-view="history"] #view-history { display: block; }
-.hidden { display: none !important; }
+.hidden { display: none; }
 @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 
 /* ── Cards ───────────────────────────────────────────── */
