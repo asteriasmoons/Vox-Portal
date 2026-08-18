@@ -1,0 +1,189 @@
+/* Vox Bugs Mini App — respects Telegram theme variables when available. */
+:root {
+  --bg:            var(--tg-theme-bg-color, #101014);
+  --card:          var(--tg-theme-secondary-bg-color, #1a1a22);
+  --text:          var(--tg-theme-text-color, #f2f2f4);
+  --subtext:       var(--tg-theme-subtitle-text-color, #a0a0ab);
+  --hint:          var(--tg-theme-hint-color, #8a8a95);
+  --link:          var(--tg-theme-link-color, #8ab4ff);
+  --accent:        var(--tg-theme-button-color, #6b8afd);
+  --accent-text:   var(--tg-theme-button-text-color, #ffffff);
+  --danger:        #ff5c5c;
+  --border:        rgba(255,255,255,0.08);
+  --radius:        14px;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 15px/1.4 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  min-height: 100dvh;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+main {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 20px 16px 40px;
+}
+
+.hdr h1 {
+  font-size: 24px;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  margin: 4px 0 4px;
+}
+.hdr .sub {
+  color: var(--subtext);
+  margin: 0 0 20px;
+}
+
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.card h2 {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--subtext);
+  margin: 0 0 12px;
+}
+
+label {
+  display: block;
+  font-size: 13px;
+  color: var(--subtext);
+  margin: 0 0 12px;
+}
+label:last-child { margin-bottom: 0; }
+
+input, textarea, select {
+  display: block;
+  width: 100%;
+  margin-top: 6px;
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 12px;
+  font: inherit;
+  outline: none;
+  appearance: none;
+  -webkit-appearance: none;
+}
+textarea { resize: vertical; min-height: 72px; }
+input:focus, textarea:focus, select:focus {
+  border-color: var(--accent);
+}
+
+.row.two {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+@media (max-width: 380px) {
+  .row.two { grid-template-columns: 1fr; }
+}
+
+.req { color: var(--danger); margin-left: 2px; }
+.hint {
+  display: block;
+  color: var(--hint);
+  font-size: 12px;
+  margin-top: 6px;
+}
+
+.files {
+  list-style: none;
+  padding: 0;
+  margin: 12px 0 0;
+}
+.files li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin-bottom: 6px;
+  background: var(--bg);
+}
+.files li .name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+}
+.files li .size { color: var(--subtext); font-size: 12px; }
+.files li .rm {
+  background: none;
+  border: 0;
+  color: var(--danger);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+.files li .prog {
+  color: var(--subtext);
+  font-size: 12px;
+}
+.files li.err { border-color: var(--danger); }
+
+.primary {
+  width: 100%;
+  padding: 14px 16px;
+  background: var(--accent);
+  color: var(--accent-text);
+  border: 0;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+}
+.primary:disabled { opacity: 0.5; cursor: default; }
+
+.success {
+  text-align: center;
+  padding: 40px 20px;
+}
+.success .check {
+  width: 64px; height: 64px;
+  border-radius: 50%;
+  background: #1e7a3a;
+  color: white;
+  font-size: 34px;
+  line-height: 64px;
+  margin: 0 auto 16px;
+}
+.success h2 { margin: 0 0 6px; font-size: 22px; font-weight: 800; }
+.success .sub { color: var(--subtext); margin: 6px 0 24px; }
+
+.hidden { display: none; }
+
+.field-error {
+  color: var(--danger);
+  font-size: 12px;
+  margin-top: 4px;
+}
+
+.top-error {
+  background: rgba(255,92,92,0.12);
+  color: var(--danger);
+  border: 1px solid rgba(255,92,92,0.3);
+  border-radius: 10px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  font-size: 13px;
+}

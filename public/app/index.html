@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Vox Bugs — Report a Bug</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main id="app">
+      <header class="hdr">
+        <h1>Report a Bug</h1>
+        <p class="sub">The more you tell us, the faster we can fix it.</p>
+      </header>
+
+      <form id="form" novalidate>
+        <section class="card">
+          <h2>App</h2>
+          <label>App <span class="req">*</span>
+            <input name="app" required autocomplete="off" placeholder="e.g. Vox" />
+          </label>
+          <div class="row two">
+            <label>Version
+              <input name="app_version" autocomplete="off" placeholder="1.2.0" />
+            </label>
+            <label>Build
+              <input name="app_build" autocomplete="off" placeholder="142" />
+            </label>
+          </div>
+          <div class="row two">
+            <label>Device
+              <input name="device" autocomplete="off" placeholder="iPhone 16 Pro" />
+            </label>
+            <label>OS
+              <input name="os" autocomplete="off" placeholder="iOS 26.6" />
+            </label>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Classification</h2>
+          <label>Category <span class="req">*</span>
+            <select name="category" required id="category-select"></select>
+            <small class="hint" id="category-hint"></small>
+          </label>
+          <label>Severity <span class="req">*</span>
+            <select name="severity" required id="severity-select"></select>
+            <small class="hint" id="severity-hint"></small>
+          </label>
+        </section>
+
+        <section class="card">
+          <h2>What went wrong?</h2>
+          <label>Short title <span class="req">*</span>
+            <input name="title" required maxlength="200" placeholder="One line describing the bug" />
+          </label>
+          <label>What happened? <span class="req">*</span>
+            <textarea name="actual_behavior" required rows="4" placeholder="Describe what you saw."></textarea>
+          </label>
+          <label>What did you expect to happen?
+            <textarea name="expected_behavior" rows="3" placeholder="What should have happened instead?"></textarea>
+          </label>
+          <label>Steps to reproduce
+            <textarea name="reproduction_steps" rows="4" placeholder="1. …&#10;2. …&#10;3. …"></textarea>
+          </label>
+          <label>Does it happen every time?
+            <select name="frequency" id="frequency-select">
+              <option value="">Not specified</option>
+            </select>
+          </label>
+          <label>Additional notes
+            <textarea name="notes" rows="3" placeholder="Anything else we should know?"></textarea>
+          </label>
+        </section>
+
+        <section class="card">
+          <h2>Attachments</h2>
+          <p class="hint">Screenshots, screen recordings, or files that show the bug. Up to 10, 20 MB each.</p>
+          <input type="file" id="file-input" multiple
+                 accept="image/*,video/*,.pdf,.txt,.log,.json,.zip" />
+          <ul id="file-list" class="files"></ul>
+        </section>
+
+        <button type="submit" id="submit-btn" class="primary">Submit report</button>
+      </form>
+
+      <div id="success" class="success hidden">
+        <div class="check">✓</div>
+        <h2>Bug submitted</h2>
+        <p>Your report was received as <b id="success-id"></b>.</p>
+        <p class="sub">You'll get an update in Telegram when its status changes.</p>
+        <button id="close-btn" class="primary">Close</button>
+      </div>
+    </main>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
