@@ -331,6 +331,7 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); backgro
   width: 26px; height: 26px;
   object-fit: contain;
   opacity: 0.7;
+  filter: brightness(0) invert(1);
   transition: opacity 120ms ease, filter 120ms ease;
 }
 .nav-btn .nav-label {
