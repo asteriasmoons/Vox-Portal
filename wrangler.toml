@@ -35,7 +35,7 @@ id = "a20bed8a035140eea3087a16322c3ad9"
 [vars]
 BOT_USERNAME = "VoxBugsBot"
 MINIAPP_SHORT_NAME = "bugs"
-PUBLIC_ORIGIN = "https://vox-bugs-bot.your-subdomain.workers.dev"
+PUBLIC_ORIGIN = "https://bugs.voxiverse.ink"
 
 # ── Secrets (set with `wrangler secret put NAME`) ───────────
 # TELEGRAM_BOT_TOKEN     — from @BotFather
