@@ -17,11 +17,15 @@ export function initNav(): void {
 }
 
 export function goto(view: ViewName): void {
-  document.body.dataset.view = view;
+  for (const name of ["home", "create", "history"] as const) {
+    const section = requireEl<HTMLElement>(`#view-${name}`);
+    section.style.display = name === view ? "block" : "none";
+  }
 
   for (const btn of $$<HTMLButtonElement>(".nav-btn")) {
-    btn.classList.toggle("active", btn.dataset.goto === view);
-    btn.setAttribute("aria-selected", String(btn.dataset.goto === view));
+    const active = btn.dataset.goto === view;
+    btn.classList.toggle("active", active);
+    btn.setAttribute("aria-selected", String(active));
   }
 
   requireEl("#app").scrollTop = 0;
