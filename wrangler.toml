@@ -17,7 +17,7 @@ binding = "ASSETS"
 [[d1_databases]]
 binding = "DB"
 database_name = "vox_bugs"
-database_id = "REPLACE_WITH_D1_DATABASE_ID"
+database_id = "8a792b49-c497-4abd-a9dd-7270f4e8e4d7"
 
 # ── R2 bucket for attachments ───────────────────────────────
 # Create with:  wrangler r2 bucket create vox-bugs-attachments
@@ -29,7 +29,7 @@ bucket_name = "vox-bugs-attachments"
 # Create with:  wrangler kv namespace create SESSIONS
 [[kv_namespaces]]
 binding = "SESSIONS"
-id = "REPLACE_WITH_KV_NAMESPACE_ID"
+id = "a20bed8a035140eea3087a16322c3ad9"
 
 # ── Non-secret vars ─────────────────────────────────────────
 [vars]
