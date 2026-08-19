@@ -70,11 +70,12 @@ export async function postReportToThread(
     log.warn("discussion_mirror_unresolved_for_report", { bugId: row.id });
     return null;
   }
-  return await sendMessage(env, discussionChatId(env), renderReportBody(row), {
+  const msg = await sendMessage(env, discussionChatId(env), renderReportBody(row), {
     parse_mode: "HTML",
     reply_parameters: { message_id: mirrorMessageId },
-    reply_markup: adminActionsKeyboard(row.id),
   });
+  await editMessageReplyMarkup(env, discussionChatId(env), msg.message_id, adminActionsKeyboard(row.id));
+  return msg;
 }
 
 // Post a status-update message into the bug's thread.
