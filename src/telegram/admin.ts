@@ -34,7 +34,11 @@ export async function handleAdminCallback(ctx: CallbackCtx): Promise<boolean> {
   //   act:<what>:<bugId>:<value>
   const parts = data.split(":");
   if (parts.length < 3) return false;
-  const [prefix, what, bugIdStr, valueMaybe] = parts;
+  let [prefix, what, bugIdStr, valueMaybe] = parts;
+  if (prefix === "a") {
+    prefix = "act";
+    if (what === "s") what = "status";
+  }
   if (prefix !== "menu" && prefix !== "act") return false;
 
   if (!isAdmin(env, fromTgId)) {
@@ -145,9 +149,10 @@ export async function handleAdminGroupCommand(
   if (!msg.from || !isAdmin(env, msg.from.id)) return false;
   if (!msg.message_thread_id) return false;
 
-  // Find the bug whose discussion_thread_id matches.
+  // In linked-channel comments, Telegram sets message_thread_id to the
+  // auto-forwarded discussion-root message id. That is stored as discussion_message_id.
   const row = await env.DB.prepare(
-    `SELECT * FROM bugs WHERE discussion_thread_id = ? LIMIT 1`,
+    `SELECT * FROM bugs WHERE discussion_message_id = ? LIMIT 1`,
   )
     .bind(msg.message_thread_id)
     .first<import("../db/types").BugRow>();

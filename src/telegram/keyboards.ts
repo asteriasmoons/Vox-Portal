@@ -12,12 +12,12 @@ export function adminActionsKeyboard(bugId: number) {
         { text: "Category", callback_data: `menu:category:${bugId}` },
       ],
       [
-        { text: "✅ Mark Fixed", callback_data: `act:status:${bugId}:fixed` },
-        { text: "⚫ Close", callback_data: `act:status:${bugId}:closed` },
+        { text: "✅ Mark Fixed", callback_data: `a:s:${bugId}:fixed` },
+        { text: "⚫ Close", callback_data: `a:s:${bugId}:closed` },
       ],
       [
-        { text: "🔄 Reopen", callback_data: `act:status:${bugId}:investigating` },
-        { text: "⚪ Cannot Reproduce", callback_data: `act:status:${bugId}:cannot_reproduce` },
+        { text: "🔄 Reopen", callback_data: `a:s:${bugId}:investigating` },
+        { text: "⚪ Cannot Reproduce", callback_data: `a:s:${bugId}:cannot_reproduce` },
       ],
       [{ text: "📝 Add note", callback_data: `menu:note:${bugId}` }],
     ],
