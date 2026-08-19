@@ -201,26 +201,39 @@ export async function handleResubmitBug(env: Env, req: Request, id: number): Pro
     const replacementChannelMessageId = await postChannelTicket(env, row);
     mirrorId = await waitForDiscussionMirror(env, replacementChannelMessageId, 8000);
     if (!mirrorId) return json({ ok: false, error: "discussion_mirror_missing_after_repost" }, { status: 409 });
-    await setBugTelegramLinkage(env, row.id, replacementChannelMessageId, mirrorId, null);
-    row = { ...row, channel_message_id: replacementChannelMessageId, discussion_message_id: mirrorId };
+    await setBugTelegramLinkage(env, row.id, replacementChannelMessageId, mirrorId, mirrorId);
+    row = { ...row, channel_message_id: replacementChannelMessageId, discussion_message_id: mirrorId, discussion_thread_id: mirrorId };
   } else if (!row.discussion_message_id) {
-    await setBugTelegramLinkage(env, row.id, row.channel_message_id, mirrorId, null);
-    row = { ...row, discussion_message_id: mirrorId };
+    await setBugTelegramLinkage(env, row.id, row.channel_message_id, mirrorId, mirrorId);
+    row = { ...row, discussion_message_id: mirrorId, discussion_thread_id: mirrorId };
+  } else if (!row.discussion_thread_id) {
+    await setBugTelegramLinkage(env, row.id, row.channel_message_id, row.discussion_message_id, row.discussion_message_id);
+    row = { ...row, discussion_thread_id: row.discussion_message_id };
   }
 
   await postReportToThread(env, row, mirrorId);
   const atts = await listAttachments(env, row.id);
   for (const a of atts) {
     if (a.posted_message_id) continue;
-    let posted: number | null = null;
-    if (a.r2_key) {
-      const obj = await env.ATTACHMENTS.get(a.r2_key);
-      if (!obj) continue;
-      posted = await postR2AttachmentToThread(env, row, await obj.arrayBuffer(), a.mime_type ?? "application/octet-stream", a.file_name ?? "attachment");
-    } else if (a.telegram_file_id) {
-      posted = await postTelegramAttachmentToThread(env, row, a.kind, a.telegram_file_id);
+    try {
+      let posted: number | null = null;
+      if (a.r2_key) {
+        const obj = await env.ATTACHMENTS.get(a.r2_key);
+        if (!obj) continue;
+        posted = await postR2AttachmentToThread(env, row, await obj.arrayBuffer(), a.mime_type ?? "application/octet-stream", a.file_name ?? "attachment");
+      } else if (a.telegram_file_id) {
+        posted = await postTelegramAttachmentToThread(env, row, a.kind, a.telegram_file_id);
+      }
+      if (posted) await setAttachmentPostedMessage(env, a.id, posted);
+    } catch (e) {
+      log.error("resubmit_attachment_post_failed_nonfatal", e, {
+        bugId: row.id,
+        attachmentId: a.id,
+        kind: a.kind,
+        mime: a.mime_type,
+        fileName: a.file_name,
+      });
     }
-    if (posted) await setAttachmentPostedMessage(env, a.id, posted);
   }
   return json({ ok: true });
 }

@@ -82,7 +82,9 @@ export async function createBug(
   row = { ...row, channel_message_id: channelMessageId };
 
   // 2) Wait for the auto-forwarded discussion mirror, then create the channel comment.
-  // Submission is not considered successful until the comment body AND every attachment post.
+  // The core submission succeeds once the report body is posted. Attachments are
+  // retried and tracked, but a media relay failure should not strand the channel
+  // ticket or cause users to resubmit duplicate bugs.
   const mirrorMessageId = await waitForDiscussionMirror(env, channelMessageId);
   if (!mirrorMessageId) {
     for (const att of attachments) await persistAttachment(env, row.id, att);
@@ -93,8 +95,8 @@ export async function createBug(
     throw new Error("telegram_comment_mirror_missing");
   }
 
-  await setBugTelegramLinkage(env, row.id, channelMessageId, mirrorMessageId, null);
-  row = { ...row, discussion_message_id: mirrorMessageId, discussion_thread_id: null };
+  await setBugTelegramLinkage(env, row.id, channelMessageId, mirrorMessageId, mirrorMessageId);
+  row = { ...row, discussion_message_id: mirrorMessageId, discussion_thread_id: mirrorMessageId };
 
   const reportMessage = await postReportToThread(env, row, mirrorMessageId);
   if (!reportMessage) {
@@ -106,8 +108,19 @@ export async function createBug(
   // The report comment and its attachments all land in the same linked discussion chat,
   // so space them out instead of firing the media upload immediately after sendMessage.
   for (const att of attachments) {
-    await sleep(1100);
-    await persistAndPostAttachment(env, row, att);
+    try {
+      await sleep(1100);
+      await persistAndPostAttachment(env, row, att);
+    } catch (e) {
+      log.error("attachment_post_failed_nonfatal", e, {
+        bugId: row.id,
+        source: att.source,
+        kind: att.kind,
+        mime: att.source === "r2" ? att.mime : att.mime ?? null,
+        fileName: att.source === "r2" ? att.file_name : att.file_name ?? null,
+        sizeBytes: att.size_bytes ?? null,
+      });
+    }
   }
 
   // 3) Confirm to reporter

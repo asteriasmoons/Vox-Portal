@@ -5,7 +5,8 @@
 //   • That auto-forwarded group message is the root of the channel post's comment section.
 //   • The Bot API exposes it as `is_automatic_forward` with a channel `forward_origin`.
 //   • To create a channel comment, send into the linked discussion group with
-//     `reply_parameters.message_id` targeting that auto-forwarded root message.
+//     `message_thread_id` and `reply_parameters.message_id` targeting that
+//     auto-forwarded root message.
 //
 // webhook.ts records the channel-post message id → discussion-root message id mapping.
 // We reuse that root for the detailed report, attachments, notes, and status comments.
@@ -73,6 +74,7 @@ export async function postReportToThread(
   }
   return await sendMessage(env, discussionChatId(env), renderReportBody(row), {
     parse_mode: "HTML",
+    message_thread_id: mirrorMessageId,
     reply_parameters: { message_id: mirrorMessageId },
     reply_markup: adminActionsKeyboard(row.id),
   });
@@ -85,8 +87,10 @@ export async function postStatusUpdateToThread(
   fromStatus: string | null,
 ): Promise<void> {
   if (!row.discussion_message_id) return;
+  const threadId = commentThreadId(row);
   await sendMessage(env, discussionChatId(env), renderStatusUpdate(fromStatus, row.status), {
     parse_mode: "HTML",
+    message_thread_id: threadId,
     reply_parameters: { message_id: row.discussion_message_id },
   });
 }
@@ -94,10 +98,12 @@ export async function postStatusUpdateToThread(
 // Post an admin note into the bug's linked discussion comments.
 export async function postAdminNoteToThread(env: Env, row: BugRow, note: string, byUsername: string) {
   if (!row.discussion_message_id) return;
+  const threadId = commentThreadId(row);
   const { esc } = await import("../util/html");
   const body = `<b>NOTE</b> · ${esc(byUsername)}\n${esc(note)}`;
   await sendMessage(env, discussionChatId(env), body, {
     parse_mode: "HTML",
+    message_thread_id: threadId,
     reply_parameters: { message_id: row.discussion_message_id },
   });
 }
@@ -112,7 +118,13 @@ export async function postTelegramAttachmentToThread(
 ): Promise<number | null> {
   if (!row.discussion_message_id) return null;
   const chat = discussionChatId(env);
-  const opts = { reply_parameters: { message_id: row.discussion_message_id }, caption, parse_mode: "HTML" as const };
+  const threadId = commentThreadId(row);
+  const opts = {
+    message_thread_id: threadId,
+    reply_parameters: { message_id: row.discussion_message_id },
+    caption,
+    parse_mode: "HTML" as const,
+  };
   let msg: TelegramMessage;
   switch (kind) {
     case "photo":
@@ -146,8 +158,10 @@ export async function postR2AttachmentToThread(
 ): Promise<number | null> {
   if (!row.discussion_message_id) return null;
   const chat = discussionChatId(env);
+  const threadId = commentThreadId(row);
   const form = new FormData();
   form.append("chat_id", String(chat));
+  form.append("message_thread_id", String(threadId));
   form.append("reply_parameters", JSON.stringify({ message_id: row.discussion_message_id }));
 
   const blob = new Blob([bytes], { type: mime });
@@ -175,6 +189,7 @@ export async function postR2AttachmentToThread(
     log.warn("attachment_media_fallback_to_document", { bugId: row.id, fileName, mime, method, reason: e.description });
     const fallback = new FormData();
     fallback.append("chat_id", String(chat));
+    fallback.append("message_thread_id", String(threadId));
     fallback.append("reply_parameters", JSON.stringify({ message_id: row.discussion_message_id }));
     fallback.append("document", blob, fileName);
     const msg = await tgCallMultipart<TelegramMessage>(env, "sendDocument", fallback);
@@ -226,11 +241,15 @@ export async function recordDiscussionMirror(
     expirationTtl: 60 * 60 * 24,
   });
   await env.DB.prepare(
-    `UPDATE bugs SET discussion_message_id = ?, discussion_thread_id = NULL, updated_at = ?
+    `UPDATE bugs SET discussion_message_id = ?, discussion_thread_id = ?, updated_at = ?
      WHERE channel_message_id = ?`,
   )
-    .bind(discussionMessageId, Math.floor(Date.now() / 1000), channelMessageId)
+    .bind(discussionMessageId, discussionMessageId, Math.floor(Date.now() / 1000), channelMessageId)
     .run();
+}
+
+function commentThreadId(row: BugRow): number {
+  return row.discussion_thread_id ?? row.discussion_message_id!;
 }
 
 // Explicit re-export so index.ts stays clean.
