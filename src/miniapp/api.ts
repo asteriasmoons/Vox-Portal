@@ -5,8 +5,9 @@
 import type { Env } from "../config";
 import { validateInitData } from "../telegram/initdata";
 import { createBug, type IncomingAttachment } from "../bugs/service";
+import { postReportToThread, postR2AttachmentToThread, postTelegramAttachmentToThread, waitForDiscussionMirror } from "../telegram/channel";
 import { APPS, CATEGORIES, SEVERITIES, FREQUENCIES, CATEGORY_IDS, SEVERITY_IDS } from "../bugs/constants";
-import { listBugsByReporter } from "../db/queries";
+import { listBugsByReporter, getBug, listAttachments, setAttachmentPostedMessage, setBugTelegramLinkage } from "../db/queries";
 import { publicIdOf } from "../bugs/formatting";
 import { log } from "../util/log";
 
@@ -154,6 +155,7 @@ export async function handleMyBugs(env: Env, req: Request): Promise<Response> {
   return json({
     ok: true,
     bugs: rows.map((r) => ({
+      id: r.id,
       public_id: publicIdOf(r),
       title: r.title,
       status: r.status,
@@ -162,6 +164,54 @@ export async function handleMyBugs(env: Env, req: Request): Promise<Response> {
       created_at: r.created_at,
     })),
   });
+}
+
+export async function handleMyBugDetail(env: Env, req: Request, id: number): Promise<Response> {
+  const initData = req.headers.get("x-telegram-init-data") ?? "";
+  let user;
+  try { ({ user } = await validateInitData(env, initData)); }
+  catch { return json({ ok: false, error: "auth" }, { status: 401 }); }
+  const row = await getBug(env, id);
+  if (!row || row.reporter_tg_id !== user.id) return json({ ok: false, error: "not_found" }, { status: 404 });
+  const atts = await listAttachments(env, row.id);
+  return json({
+    ok: true,
+    bug: { ...row, public_id: publicIdOf(row) },
+    attachments: atts.map((a) => ({ id: a.id, kind: a.kind, file_name: a.file_name, mime_type: a.mime_type, size_bytes: a.size_bytes, posted_message_id: a.posted_message_id })),
+  });
+}
+
+export async function handleResubmitBug(env: Env, req: Request, id: number): Promise<Response> {
+  const initData = req.headers.get("x-telegram-init-data") ?? "";
+  let user;
+  try { ({ user } = await validateInitData(env, initData)); }
+  catch { return json({ ok: false, error: "auth" }, { status: 401 }); }
+  let row = await getBug(env, id);
+  if (!row || row.reporter_tg_id !== user.id) return json({ ok: false, error: "not_found" }, { status: 404 });
+  if (!row.channel_message_id) return json({ ok: false, error: "missing_channel_post" }, { status: 409 });
+
+  let mirrorId = row.discussion_message_id ?? await waitForDiscussionMirror(env, row.channel_message_id, 3000);
+  if (!mirrorId) return json({ ok: false, error: "discussion_mirror_missing" }, { status: 409 });
+  if (!row.discussion_message_id) {
+    await setBugTelegramLinkage(env, row.id, row.channel_message_id, mirrorId, null);
+    row = { ...row, discussion_message_id: mirrorId };
+  }
+
+  await postReportToThread(env, row, mirrorId);
+  const atts = await listAttachments(env, row.id);
+  for (const a of atts) {
+    if (a.posted_message_id) continue;
+    let posted: number | null = null;
+    if (a.r2_key) {
+      const obj = await env.ATTACHMENTS.get(a.r2_key);
+      if (!obj) continue;
+      posted = await postR2AttachmentToThread(env, row, await obj.arrayBuffer(), a.mime_type ?? "application/octet-stream", a.file_name ?? "attachment");
+    } else if (a.telegram_file_id) {
+      posted = await postTelegramAttachmentToThread(env, row, a.kind, a.telegram_file_id);
+    }
+    if (posted) await setAttachmentPostedMessage(env, a.id, posted);
+  }
+  return json({ ok: true });
 }
 
 // ── helpers ─────────────────────────────────────────────────

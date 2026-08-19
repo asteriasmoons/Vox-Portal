@@ -4,7 +4,7 @@ import { initTelegram, INIT_DATA } from "./tg";
 import { loadFormConfig } from "./config";
 import { initAttachments } from "./attachments";
 import { initSubmit, resetForm } from "./submit";
-import { loadHistory } from "./history";
+import { loadHistory, initHistoryDetailBack } from "./history";
 import { initSteps } from "./steps";
 import { $ } from "./dom";
 import { showTopError, clearErrors } from "./ui";
@@ -28,5 +28,6 @@ if (page === "create") {
 }
 
 if (page === "history") {
+  initHistoryDetailBack();
   void loadHistory();
 }

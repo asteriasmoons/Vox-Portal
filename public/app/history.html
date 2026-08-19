@@ -21,6 +21,55 @@
       </div>
       <div id="history-loading" class="card empty">Loading…</div>
       <ul id="history-list" class="history hidden"></ul>
+
+      <section id="history-detail" class="history-detail hidden">
+        <button id="history-detail-back" class="detail-back" type="button">← Back to reports</button>
+        <div id="history-detail-loading" class="card empty">Loading report…</div>
+        <div id="history-detail-content" class="hidden">
+          <div class="detail-hero card">
+            <div class="detail-topline">
+              <span id="detail-public-id" class="detail-public-id"></span>
+              <span id="detail-status" class="status-pill"></span>
+            </div>
+            <h2 id="detail-title" class="detail-title"></h2>
+            <p id="detail-submitted" class="detail-submitted"></p>
+          </div>
+
+          <section class="card detail-grid-card">
+            <h2>App & Device</h2>
+            <div class="detail-grid">
+              <div><span>App</span><strong id="detail-app"></strong></div>
+              <div><span>Version</span><strong id="detail-version"></strong></div>
+              <div><span>Build</span><strong id="detail-build"></strong></div>
+              <div><span>Device</span><strong id="detail-device"></strong></div>
+              <div><span>OS</span><strong id="detail-os"></strong></div>
+              <div><span>Category</span><strong id="detail-category"></strong></div>
+              <div><span>Severity</span><strong id="detail-severity"></strong></div>
+              <div><span>Frequency</span><strong id="detail-frequency"></strong></div>
+            </div>
+          </section>
+
+          <section class="card detail-copy-card">
+            <h2>What happened?</h2>
+            <p id="detail-actual"></p>
+            <h3>Expected</h3>
+            <p id="detail-expected"></p>
+            <h3>Steps to reproduce</h3>
+            <p id="detail-steps" class="prewrap"></p>
+            <h3>Additional notes</h3>
+            <p id="detail-notes"></p>
+          </section>
+          <section class="card">
+            <h2>Attachments</h2>
+            <ul id="detail-attachments" class="detail-attachments"></ul>
+          </section>
+
+          <section class="resubmit-card">
+            <button id="detail-resubmit" class="primary" type="button">Resubmit to Telegram</button>
+            <p id="detail-resubmit-feedback" class="hint resubmit-feedback"></p>
+          </section>
+        </div>
+      </section>
     </main>
 
     <nav id="nav" aria-label="Primary">

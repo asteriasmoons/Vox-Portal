@@ -93,17 +93,23 @@
       </form>
 
       <div id="success" class="success hidden">
-        <div class="check">
-          <svg viewBox="0 0 24 24" width="34" height="34" aria-hidden="true">
-            <path d="M5 12.5l4.5 4.5L20 6" fill="none" stroke="currentColor"
-              stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
-          </svg>
-        </div>
-        <h2 class="page-title">Bug submitted</h2>
-        <p>Your report was received as <b id="success-id"></b>.</p>
-        <p class="sub">You'll get an update in Telegram when its status changes.</p>
-        <button id="new-btn" class="primary">File another</button>
-        <a class="ghost nav-link" href="./index.html">Back to home</a>
+        <section class="success-card">
+          <div class="check">
+            <svg viewBox="0 0 24 24" width="34" height="34" aria-hidden="true">
+              <path d="M5 12.5l4.5 4.5L20 6" fill="none" stroke="currentColor"
+                stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+            </svg>
+          </div>
+          <p class="success-kicker">REPORT RECEIVED</p>
+          <h2 class="page-title">Bug submitted</h2>
+          <p class="success-copy">Your report was saved as <b id="success-id"></b>.</p>
+          <p class="success-note">You'll get Telegram updates as its status changes.</p>
+          <div class="success-actions">
+            <button id="new-btn" class="primary" type="button">File another report</button>
+            <a class="ghost nav-link" href="./history.html">View my reports</a>
+            <a class="success-home-link" href="./index.html">Back to home</a>
+          </div>
+        </section>
       </div>
     </main>
 

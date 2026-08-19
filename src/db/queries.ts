@@ -180,6 +180,10 @@ export async function listAttachments(env: Env, bugId: number): Promise<Attachme
   return results ?? [];
 }
 
+export async function getAttachment(env: Env, id: number): Promise<AttachmentRow | null> {
+  return await env.DB.prepare(`SELECT * FROM attachments WHERE id = ?`).bind(id).first<AttachmentRow>();
+}
+
 // ── Status history ──────────────────────────────────────────
 export async function listStatusHistory(env: Env, bugId: number): Promise<StatusHistoryRow[]> {
   const { results } = await env.DB.prepare(

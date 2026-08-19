@@ -12,7 +12,7 @@
 
 import type { Env } from "./config";
 import { dispatchUpdate } from "./telegram/webhook";
-import { handleConfig, handleSubmit, handleUpload, handleMyBugs } from "./miniapp/api";
+import { handleConfig, handleSubmit, handleUpload, handleMyBugs, handleMyBugDetail, handleResubmitBug } from "./miniapp/api";
 import { registerCommands } from "./telegram/commands";
 import { log } from "./util/log";
 
@@ -41,7 +41,11 @@ export default {
     if (url.pathname === "/api/config" && req.method === "GET") return handleConfig();
     if (url.pathname === "/api/upload" && req.method === "POST") return handleUpload(env, req);
     if (url.pathname === "/api/submit" && req.method === "POST") return handleSubmit(env, req);
-    if (url.pathname === "/api/mybugs" && req.method === "GET")  return handleMyBugs(env, req);
+    if (url.pathname === "/api/mybugs" && req.method === "GET") return handleMyBugs(env, req);
+    const detailMatch = url.pathname.match(/^\/api\/mybugs\/(\d+)$/);
+    if (detailMatch && req.method === "GET") return handleMyBugDetail(env, req, Number(detailMatch[1]));
+    const resubmitMatch = url.pathname.match(/^\/api\/mybugs\/(\d+)\/resubmit$/);
+    if (resubmitMatch && req.method === "POST") return handleResubmitBug(env, req, Number(resubmitMatch[1]));
 
     // ── One-shot admin: register slash-command list with Telegram ──
     if (url.pathname === "/admin/register-commands" && req.method === "POST") {

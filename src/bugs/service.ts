@@ -21,7 +21,7 @@ import {
   postTelegramAttachmentToThread,
   postR2AttachmentToThread,
   refreshChannelTicket,
-  waitForThreadId,
+  waitForDiscussionMirror,
 } from "../telegram/channel";
 import { sendMessage } from "../telegram/api";
 import { renderReporterDm, renderSubmissionConfirmation } from "./formatting";
@@ -81,13 +81,13 @@ export async function createBug(
   }
   row = { ...row, channel_message_id: channelMessageId };
 
-  // 2) Wait for discussion mirror, then post the report + attachments
-  const threadId = await waitForThreadId(env, channelMessageId);
-  if (threadId) {
-    await setBugTelegramLinkage(env, row.id, channelMessageId, null, threadId);
-    row = { ...row, discussion_thread_id: threadId };
+  // 2) Wait for the auto-forwarded discussion mirror, then reply with details + attachments.
+  const mirrorMessageId = await waitForDiscussionMirror(env, channelMessageId);
+  if (mirrorMessageId) {
+    await setBugTelegramLinkage(env, row.id, channelMessageId, mirrorMessageId, null);
+    row = { ...row, discussion_message_id: mirrorMessageId, discussion_thread_id: null };
     try {
-      await postReportToThread(env, row, threadId);
+      await postReportToThread(env, row, mirrorMessageId);
     } catch (e) {
       log.error("report_post_failed", e, { bugId: row.id });
     }

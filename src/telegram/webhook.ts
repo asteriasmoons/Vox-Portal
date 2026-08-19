@@ -54,17 +54,17 @@ export async function dispatchUpdate(env: Env, update: Update): Promise<void> {
 async function onMessage(env: Env, msg: TelegramMessage) {
   // Case A: message inside the linked discussion group.
   if (msg.chat.id === discussionChatId(env)) {
-    // A.1 — Auto-forwarded channel mirror: capture thread mapping.
-    const anyMsg = msg as TelegramMessage & {
-      is_automatic_forward?: boolean;
-      forward_from_message_id?: number;
-    };
-    if (anyMsg.is_automatic_forward && anyMsg.forward_from_message_id && msg.message_thread_id) {
+    // A.1 — Auto-forwarded channel mirror: capture the channel-post → discussion-root mapping.
+    // Current Bot API exposes the original channel post through forward_origin.
+    if (
+      msg.is_automatic_forward &&
+      msg.forward_origin?.type === "channel" &&
+      typeof msg.forward_origin.message_id === "number"
+    ) {
       await recordDiscussionMirror(
         env,
-        anyMsg.forward_from_message_id,
+        msg.forward_origin.message_id,
         msg.message_id,
-        msg.message_thread_id,
       );
       return;
     }

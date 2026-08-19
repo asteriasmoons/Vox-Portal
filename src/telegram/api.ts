@@ -83,7 +83,7 @@ export interface SendMessageOptions {
   reply_markup?: unknown;
   message_thread_id?: number;
   disable_web_page_preview?: boolean;
-  reply_to_message_id?: number;
+  reply_parameters?: { message_id: number; chat_id?: number | string };
 }
 
 export interface TelegramMessage {
@@ -93,6 +93,10 @@ export interface TelegramMessage {
   text?: string;
   caption?: string;
   message_thread_id?: number;
+  is_automatic_forward?: true;
+  forward_origin?:
+    | { type: "channel"; date: number; chat: { id: number; type: string }; message_id: number; author_signature?: string }
+    | { type: string; [key: string]: unknown };
   reply_to_message?: TelegramMessage;
   photo?: { file_id: string; file_unique_id: string; width: number; height: number; file_size?: number }[];
   video?: { file_id: string; mime_type?: string; file_name?: string; file_size?: number; width?: number; height?: number };
@@ -114,7 +118,7 @@ export async function sendMessage(
     disable_web_page_preview: opts.disable_web_page_preview ?? true,
     reply_markup: opts.reply_markup,
     message_thread_id: opts.message_thread_id,
-    reply_to_message_id: opts.reply_to_message_id,
+    reply_parameters: opts.reply_parameters,
   });
 }
 
@@ -123,7 +127,7 @@ export async function editMessageText(
   chatId: number | string,
   messageId: number,
   text: string,
-  opts: Omit<SendMessageOptions, "reply_to_message_id" | "message_thread_id"> = {},
+  opts: Omit<SendMessageOptions, "reply_parameters" | "message_thread_id"> = {},
 ): Promise<TelegramMessage | true> {
   return await tgCall<TelegramMessage | true>(env, "editMessageText", {
     chat_id: chatId,
@@ -178,7 +182,7 @@ export async function sendPhoto(
   env: Env,
   chatId: number | string,
   photo: string,
-  opts: { caption?: string; message_thread_id?: number; parse_mode?: string } = {},
+  opts: { caption?: string; message_thread_id?: number; reply_parameters?: { message_id: number; chat_id?: number | string }; parse_mode?: string } = {},
 ) {
   return await tgCall<TelegramMessage>(env, "sendPhoto", {
     chat_id: chatId,
@@ -186,6 +190,7 @@ export async function sendPhoto(
     caption: opts.caption,
     parse_mode: opts.parse_mode ?? "HTML",
     message_thread_id: opts.message_thread_id,
+    reply_parameters: opts.reply_parameters,
   });
 }
 
@@ -193,7 +198,7 @@ export async function sendDocument(
   env: Env,
   chatId: number | string,
   document: string,
-  opts: { caption?: string; message_thread_id?: number; parse_mode?: string } = {},
+  opts: { caption?: string; message_thread_id?: number; reply_parameters?: { message_id: number; chat_id?: number | string }; parse_mode?: string } = {},
 ) {
   return await tgCall<TelegramMessage>(env, "sendDocument", {
     chat_id: chatId,
@@ -201,6 +206,7 @@ export async function sendDocument(
     caption: opts.caption,
     parse_mode: opts.parse_mode ?? "HTML",
     message_thread_id: opts.message_thread_id,
+    reply_parameters: opts.reply_parameters,
   });
 }
 
@@ -208,7 +214,7 @@ export async function sendVideo(
   env: Env,
   chatId: number | string,
   video: string,
-  opts: { caption?: string; message_thread_id?: number; parse_mode?: string } = {},
+  opts: { caption?: string; message_thread_id?: number; reply_parameters?: { message_id: number; chat_id?: number | string }; parse_mode?: string } = {},
 ) {
   return await tgCall<TelegramMessage>(env, "sendVideo", {
     chat_id: chatId,
@@ -216,5 +222,6 @@ export async function sendVideo(
     caption: opts.caption,
     parse_mode: opts.parse_mode ?? "HTML",
     message_thread_id: opts.message_thread_id,
+    reply_parameters: opts.reply_parameters,
   });
 }
