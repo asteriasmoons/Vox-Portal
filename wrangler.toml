@@ -34,7 +34,7 @@ bucket_name = "vox-bugs-attachments"
 [[kv_namespaces]]
 binding = "SESSIONS"
 id = "a20bed8a035140eea3087a16322c3ad9"
-
+ 
 # ── Non-secret vars ─────────────────────────────────────────
 [vars]
 BOT_USERNAME = "VoxBugsBot"
