@@ -225,6 +225,14 @@ export async function waitForDiscussionMirror(
       const n = Number(cached);
       if (Number.isFinite(n)) return n;
     }
+    const persisted = await env.DB.prepare(
+      `SELECT discussion_message_id FROM bugs
+       WHERE channel_message_id = ? AND discussion_message_id IS NOT NULL
+       LIMIT 1`,
+    )
+      .bind(channelMessageId)
+      .first<{ discussion_message_id: number }>();
+    if (persisted?.discussion_message_id) return persisted.discussion_message_id;
     await new Promise((r) => setTimeout(r, 300));
   }
   return null;
@@ -246,6 +254,7 @@ export async function recordDiscussionMirror(
   )
     .bind(discussionMessageId, discussionMessageId, Math.floor(Date.now() / 1000), channelMessageId)
     .run();
+  log.info("discussion_mirror_recorded", { channelMessageId, discussionMessageId });
 }
 
 function commentThreadId(row: BugRow): number {
