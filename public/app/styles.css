@@ -446,3 +446,26 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); backgro
 .resubmit-card { margin: 4px 0 18px; }
 .resubmit-feedback { min-height: 18px; text-align: center; }
 @media (max-width: 420px) { .detail-grid { grid-template-columns: 1fr; } }
+
+/* Resubmit feedback — prominent, readable state instead of exposing internal codes. */
+.resubmit-feedback {
+  display: none;
+  margin: 12px 0 0;
+  padding: 14px 16px;
+  border-radius: 14px;
+  font-size: 13px;
+  line-height: 1.45;
+  font-weight: 800;
+  text-align: left;
+}
+.resubmit-feedback:not(:empty) { display: block; }
+.resubmit-feedback.error {
+  color: var(--danger);
+  background: rgba(255, 92, 115, 0.12);
+  border: 1px solid rgba(255, 92, 115, 0.28);
+}
+.resubmit-feedback.success {
+  color: var(--success);
+  background: rgba(119, 224, 140, 0.10);
+  border: 1px solid rgba(119, 224, 140, 0.24);
+}

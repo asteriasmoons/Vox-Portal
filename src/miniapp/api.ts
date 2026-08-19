@@ -5,7 +5,7 @@
 import type { Env } from "../config";
 import { validateInitData } from "../telegram/initdata";
 import { createBug, type IncomingAttachment } from "../bugs/service";
-import { postReportToThread, postR2AttachmentToThread, postTelegramAttachmentToThread, waitForDiscussionMirror } from "../telegram/channel";
+import { postChannelTicket, postReportToThread, postR2AttachmentToThread, postTelegramAttachmentToThread, waitForDiscussionMirror } from "../telegram/channel";
 import { APPS, CATEGORIES, SEVERITIES, FREQUENCIES, CATEGORY_IDS, SEVERITY_IDS } from "../bugs/constants";
 import { listBugsByReporter, getBug, listAttachments, setAttachmentPostedMessage, setBugTelegramLinkage } from "../db/queries";
 import { publicIdOf } from "../bugs/formatting";
@@ -191,8 +191,19 @@ export async function handleResubmitBug(env: Env, req: Request, id: number): Pro
   if (!row.channel_message_id) return json({ ok: false, error: "missing_channel_post" }, { status: 409 });
 
   let mirrorId = row.discussion_message_id ?? await waitForDiscussionMirror(env, row.channel_message_id, 3000);
-  if (!mirrorId) return json({ ok: false, error: "discussion_mirror_missing" }, { status: 409 });
-  if (!row.discussion_message_id) {
+
+  // Legacy recovery: reports created before discussion-root capture existed cannot
+  // recover the historical mirror through the Bot API. Re-post the SAME bug ticket
+  // to the channel, wait for Telegram to auto-forward that new post into the linked
+  // discussion group, and then continue using that new comment root. This does not
+  // create a new database bug or public BUG number.
+  if (!mirrorId) {
+    const replacementChannelMessageId = await postChannelTicket(env, row);
+    mirrorId = await waitForDiscussionMirror(env, replacementChannelMessageId, 8000);
+    if (!mirrorId) return json({ ok: false, error: "discussion_mirror_missing_after_repost" }, { status: 409 });
+    await setBugTelegramLinkage(env, row.id, replacementChannelMessageId, mirrorId, null);
+    row = { ...row, channel_message_id: replacementChannelMessageId, discussion_message_id: mirrorId };
+  } else if (!row.discussion_message_id) {
     await setBugTelegramLinkage(env, row.id, row.channel_message_id, mirrorId, null);
     row = { ...row, discussion_message_id: mirrorId };
   }

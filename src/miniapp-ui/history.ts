@@ -195,11 +195,27 @@ async function resubmitBug(id: number, button: HTMLButtonElement): Promise<void>
     feedback.textContent = "Report details and any pending attachments were sent to the Telegram comments.";
     button.textContent = "Resubmitted";
   } catch (e) {
-    feedback.textContent = e instanceof Error ? `Resubmit failed: ${e.message}` : "Resubmit failed.";
+    const code = e instanceof Error ? e.message : "resubmit";
+    feedback.classList.remove("success");
+    feedback.classList.add("error");
+    feedback.textContent = friendlyResubmitError(code);
     button.disabled = false;
     button.textContent = "Resubmit to Telegram";
   }
 }
+function friendlyResubmitError(code: string): string {
+  switch (code) {
+    case "discussion_mirror_missing":
+      return "This older report was created before Vox Bugs started saving Telegram's comment-thread link, so it can't be resubmitted automatically. New reports will have that link saved correctly.";
+    case "missing_channel_post":
+      return "The original Telegram channel post for this report is missing, so there is nowhere to attach the comment.";
+    case "auth":
+      return "Telegram could not verify this Mini App session. Close Vox Bugs and reopen it from Telegram, then try again.";
+    default:
+      return "Vox Bugs couldn't send this report to Telegram. Please try again.";
+  }
+}
+
 function authHeaders(): HeadersInit {
   return { "x-telegram-init-data": INIT_DATA };
 }
