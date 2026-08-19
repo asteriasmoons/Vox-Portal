@@ -5,6 +5,7 @@ import { loadFormConfig } from "./config";
 import { initAttachments } from "./attachments";
 import { initSubmit, resetForm } from "./submit";
 import { loadHistory } from "./history";
+import { initSteps } from "./steps";
 import { $ } from "./dom";
 import { showTopError, clearErrors } from "./ui";
 
@@ -16,6 +17,7 @@ if (page === "create") {
   if (!INIT_DATA) showTopError("This form must be opened from inside Telegram.");
   void loadFormConfig();
   initAttachments();
+  initSteps();
   initSubmit();
 
   $<HTMLButtonElement>("#new-btn")?.addEventListener("click", () => {

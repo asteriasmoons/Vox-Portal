@@ -2,15 +2,15 @@
 // These strings are stored in D1 verbatim; do not rename without a migration.
 
 export const APPS = [
-  "Asterium",
-  "Lunixia",
-  "Lurelia",
   "Loomey",
+  "Lurelia",
+  "Lunixia",
   "VoxTerm",
-  "Seery",
-  "Tally",
-  "Markly",
+  "Asterium",
   "Lunelia",
+  "Markly",
+  "Tally",
+  "Seery",
 ] as const;
 export type AppName = (typeof APPS)[number];
 

@@ -6,6 +6,10 @@ main = "src/index.ts"
 compatibility_date = "2025-08-01"
 compatibility_flags = ["nodejs_compat"]
 
+routes = [
+  { pattern = "bugs.voxiverse.ink", custom_domain = true }
+]
+
 # Static Mini App assets are served from /public
 [assets]
 directory = "./public"

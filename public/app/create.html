@@ -64,9 +64,11 @@
           <label>What did you expect to happen?
             <textarea name="expected_behavior" rows="3" placeholder="What should have happened instead?"></textarea>
           </label>
-          <label>Steps to reproduce
-            <textarea name="reproduction_steps" rows="4" placeholder="1. &#10;2. &#10;3. "></textarea>
-          </label>
+          <div class="steps-field">
+            <div class="steps-label">Steps to reproduce</div>
+            <div id="steps-list" class="steps-list"></div>
+            <input type="hidden" name="reproduction_steps" id="reproduction-steps" />
+          </div>
           <label>Does it happen every time?
             <select name="frequency" id="frequency-select">
               <option value="">Not specified</option>
