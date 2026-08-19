@@ -8,6 +8,7 @@
     "build:ui": "esbuild src/miniapp-ui/main.ts --bundle --format=esm --target=es2020 --minify --sourcemap --outfile=public/app/app.js",
     "watch:ui": "esbuild src/miniapp-ui/main.ts --bundle --format=esm --target=es2020 --sourcemap --watch --outfile=public/app/app.js",
     "dev": "npm run build:ui && wrangler dev",
+    "build": "npm run build:ui",
     "predeploy": "npm run build:ui",
     "deploy": "wrangler deploy",
     "db:init:local": "wrangler d1 execute vox_bugs --local --file=./schema.sql",
