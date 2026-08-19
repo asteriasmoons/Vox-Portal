@@ -23,7 +23,7 @@ import {
   refreshChannelTicket,
   waitForDiscussionMirror,
 } from "../telegram/channel";
-import { sendMessage } from "../telegram/api";
+import { sendMessage, TelegramError } from "../telegram/api";
 import { renderReporterDm, renderSubmissionConfirmation } from "./formatting";
 import { NOTIFY_ON_STATUS, type StatusId } from "./constants";
 import { log } from "../util/log";
@@ -81,34 +81,33 @@ export async function createBug(
   }
   row = { ...row, channel_message_id: channelMessageId };
 
-  // 2) Wait for the auto-forwarded discussion mirror, then reply with details + attachments.
+  // 2) Wait for the auto-forwarded discussion mirror, then create the channel comment.
+  // Submission is not considered successful until the comment body AND every attachment post.
   const mirrorMessageId = await waitForDiscussionMirror(env, channelMessageId);
-  if (mirrorMessageId) {
-    await setBugTelegramLinkage(env, row.id, channelMessageId, mirrorMessageId, null);
-    row = { ...row, discussion_message_id: mirrorMessageId, discussion_thread_id: null };
-    try {
-      await postReportToThread(env, row, mirrorMessageId);
-    } catch (e) {
-      log.error("report_post_failed", e, { bugId: row.id });
-    }
-    for (const att of attachments) {
-      try {
-        await persistAndPostAttachment(env, row, att);
-      } catch (e) {
-        log.error("attachment_post_failed", e, { bugId: row.id });
-      }
-    }
-  } else {
-    // Still persist attachment metadata even if we couldn't post them yet;
-    // an admin retry later can pick them up.
-    for (const att of attachments) {
-      try {
-        await persistAttachment(env, row.id, att);
-      } catch (e) {
-        log.error("attachment_persist_failed", e, { bugId: row.id });
-      }
-    }
-    log.warn("discussion_thread_missing", { bugId: row.id, channelMessageId });
+  if (!mirrorMessageId) {
+    for (const att of attachments) await persistAttachment(env, row.id, att);
+    log.error("discussion_mirror_missing", new Error("Telegram discussion mirror was not received"), {
+      bugId: row.id,
+      channelMessageId,
+    });
+    throw new Error("telegram_comment_mirror_missing");
+  }
+
+  await setBugTelegramLinkage(env, row.id, channelMessageId, mirrorMessageId, null);
+  row = { ...row, discussion_message_id: mirrorMessageId, discussion_thread_id: null };
+
+  const reportMessage = await postReportToThread(env, row, mirrorMessageId);
+  if (!reportMessage) {
+    log.error("report_post_missing", new Error("Telegram did not return a report comment"), { bugId: row.id });
+    throw new Error("telegram_comment_post_failed");
+  }
+
+  // Telegram documents a per-chat pacing limit of about one bot message per second.
+  // The report comment and its attachments all land in the same linked discussion chat,
+  // so space them out instead of firing the media upload immediately after sendMessage.
+  for (const att of attachments) {
+    await sleep(1100);
+    await persistAndPostAttachment(env, row, att);
   }
 
   // 3) Confirm to reporter
@@ -125,13 +124,35 @@ export async function createBug(
 
 async function persistAndPostAttachment(env: Env, row: BugRow, att: IncomingAttachment) {
   const inserted = await persistAttachment(env, row.id, att);
-  let posted: number | null = null;
-  if (att.source === "telegram") {
-    posted = await postTelegramAttachmentToThread(env, row, att.kind, att.telegram_file_id);
-  } else {
-    posted = await postR2AttachmentToThread(env, row, att.bytes, att.mime, att.file_name);
+  const posted = await postAttachmentWithRetry(env, row, att);
+
+  if (!posted) {
+    log.error("attachment_post_missing", new Error("Telegram did not return an attachment comment"), {
+      bugId: row.id,
+      attachmentId: inserted.id,
+    });
+    throw new Error("telegram_attachment_post_failed");
   }
-  if (posted) await setAttachmentPostedMessage(env, inserted.id, posted);
+  await setAttachmentPostedMessage(env, inserted.id, posted);
+}
+
+async function postAttachmentWithRetry(env: Env, row: BugRow, att: IncomingAttachment): Promise<number | null> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return att.source === "telegram"
+        ? await postTelegramAttachmentToThread(env, row, att.kind, att.telegram_file_id)
+        : await postR2AttachmentToThread(env, row, att.bytes, att.mime, att.file_name);
+    } catch (e) {
+      if (!(e instanceof TelegramError) || e.error_code !== 429 || attempt === 2) throw e;
+      const retryAfter = Number((e.parameters as { retry_after?: number } | undefined)?.retry_after ?? 1);
+      await sleep(Math.max(1100, (retryAfter + 0.1) * 1000));
+    }
+  }
+  return null;
+}
+
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function persistAttachment(env: Env, bugId: number, att: IncomingAttachment) {

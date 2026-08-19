@@ -57,8 +57,13 @@ export async function tgCallMultipart<T = unknown>(
   const res = await fetch(url, { method: "POST", body: form });
   const data = (await res.json()) as TelegramResponse<T>;
   if (!data.ok) {
-    log.warn("telegram_api_error", { method, code: data.error_code, description: data.description });
-    throw new TelegramError(method, data.description ?? "unknown", data.error_code);
+    log.warn("telegram_api_error", {
+      method,
+      code: data.error_code,
+      description: data.description,
+      parameters: data.parameters,
+    });
+    throw new TelegramError(method, data.description ?? "unknown", data.error_code, data.parameters);
   }
   return data.result as T;
 }
