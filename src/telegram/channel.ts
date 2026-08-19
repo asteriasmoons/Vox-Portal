@@ -23,6 +23,7 @@ import {
   copyMessage,
   tgCall,
   tgCallMultipart,
+  TelegramError,
   type TelegramMessage,
 } from "./api";
 import { adminActionsKeyboard } from "./keyboards";
@@ -163,8 +164,22 @@ export async function postR2AttachmentToThread(
     field = "animation";
   }
   form.append(field, blob, fileName);
-  const msg = await tgCallMultipart<TelegramMessage>(env, method, form);
-  return msg.message_id;
+  try {
+    const msg = await tgCallMultipart<TelegramMessage>(env, method, form);
+    return msg.message_id;
+  } catch (e) {
+    // Telegram's photo/video processors reject some otherwise-valid files
+    // (for example 16-bit PNG screenshots). Preserve the original attachment
+    // by falling back to sendDocument instead of failing the whole bug report.
+    if (!(e instanceof TelegramError) || method === "sendDocument" || e.error_code !== 400) throw e;
+    log.warn("attachment_media_fallback_to_document", { bugId: row.id, fileName, mime, method, reason: e.description });
+    const fallback = new FormData();
+    fallback.append("chat_id", String(chat));
+    fallback.append("reply_parameters", JSON.stringify({ message_id: row.discussion_message_id }));
+    fallback.append("document", blob, fileName);
+    const msg = await tgCallMultipart<TelegramMessage>(env, "sendDocument", fallback);
+    return msg.message_id;
+  }
 }
 
 // Attach an updated inline keyboard to the report message (or the ticket, if
