@@ -240,6 +240,36 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); backgro
 .success h2 { font-size: 22px; }
 .success .sub { color: var(--subtext); margin: 6px 0 24px; font-weight: 600; }
 
+/* Per-destination result rows shown on the success screen. */
+.destinations {
+  list-style: none;
+  padding: 0;
+  margin: 14px auto 4px;
+  max-width: 360px;
+  text-align: left;
+}
+.destinations .dest {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  margin-bottom: 8px;
+  background: rgba(0,0,0,0.3);
+  font-weight: 700;
+  font-size: 14px;
+}
+.destinations .dest-mark {
+  width: 20px; text-align: center; font-weight: 900;
+}
+.destinations .dest-ok    .dest-mark { color: var(--success); }
+.destinations .dest-warn  .dest-mark { color: #ffb14a; }
+.destinations .dest-muted .dest-mark { color: var(--subtext); }
+.destinations .dest-label { color: var(--text); text-decoration: none; }
+.destinations a.dest-label { text-decoration: underline; }
+.destinations .dest-muted .dest-label { color: var(--subtext); font-weight: 700; }
+
 /* ── Error banners ───────────────────────────────────── */
 .field-error {
   color: var(--danger);

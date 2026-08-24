@@ -194,6 +194,35 @@ export async function listStatusHistory(env: Env, bugId: number): Promise<Status
   return results ?? [];
 }
 
+// ── GitHub cross-reference persistence ──────────────────────
+// Set only the columns you pass; null explicitly clears a column
+// (`github_error` clearing is used after a successful create).
+export interface GitHubMetaPatch {
+  github_repo?: string | null;
+  github_issue_number?: number | null;
+  github_issue_url?: string | null;
+  github_status?: string | null;
+  github_error?: string | null;
+  github_created_at?: number | null;
+}
+
+export async function saveGitHubMeta(env: Env, bugId: number, patch: GitHubMetaPatch): Promise<void> {
+  const cols: string[] = [];
+  const vals: (string | number | null)[] = [];
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === undefined) continue;
+    cols.push(`${k} = ?`);
+    vals.push(v as string | number | null);
+  }
+  if (!cols.length) return;
+  cols.push(`updated_at = ?`);
+  vals.push(Math.floor(Date.now() / 1000));
+  vals.push(bugId);
+  await env.DB.prepare(`UPDATE bugs SET ${cols.join(", ")} WHERE id = ?`)
+    .bind(...vals)
+    .run();
+}
+
 // ── Update idempotency ──────────────────────────────────────
 // Returns true if this update_id was NOT yet processed (and marks it as processed).
 export async function claimUpdateId(env: Env, updateId: number): Promise<boolean> {

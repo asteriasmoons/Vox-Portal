@@ -39,7 +39,20 @@ export interface SubmitPayload {
   attachments?: SubmitAttachment[];
   submit_token?: string;
 }
-export interface SubmitResponse { ok: true; public_id: string; id: number }
+export type GitHubResult =
+  | { status: "created"; issue_number: number; issue_url: string; repo: string }
+  | { status: "skipped_no_mapping"; reason: string | null }
+  | { status: "skipped_disabled"; reason: string | null }
+  | { status: "failed"; reason: string | null }
+  | { status: "not_attempted" };
+
+export interface SubmitResponse {
+  ok: true;
+  public_id: string;
+  id: number;
+  telegram: { status: "sent" };
+  github: GitHubResult;
+}
 
 export async function getConfig(): Promise<ConfigResponse> {
   const res = await fetch("/api/config");

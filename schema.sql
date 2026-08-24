@@ -34,11 +34,21 @@ CREATE TABLE IF NOT EXISTS bugs (
   discussion_message_id    INTEGER,
   discussion_thread_id     INTEGER,
 
+  -- GitHub Issue cross-reference. Populated by src/github/service.ts.
+  -- `github_status` values: 'created' | 'failed' | 'skipped_no_mapping' | 'skipped_disabled'
+  github_repo           TEXT,
+  github_issue_number   INTEGER,
+  github_issue_url      TEXT,
+  github_status         TEXT,
+  github_error          TEXT,
+  github_created_at     INTEGER,
+
   duplicate_of_id       INTEGER REFERENCES bugs(id) ON DELETE SET NULL,
 
   created_at            INTEGER NOT NULL DEFAULT (unixepoch()),
   updated_at            INTEGER NOT NULL DEFAULT (unixepoch())
 );
+CREATE INDEX IF NOT EXISTS idx_bugs_github_issue ON bugs(github_issue_number);
 
 CREATE INDEX IF NOT EXISTS idx_bugs_reporter  ON bugs(reporter_tg_id);
 CREATE INDEX IF NOT EXISTS idx_bugs_status    ON bugs(status);

@@ -39,7 +39,7 @@ export function initSubmit(): void {
     btn.textContent = "Submitting…";
     try {
       const out = await submitReport(data);
-      showSuccess(out.public_id);
+      showSuccess(out.public_id, out.telegram, out.github);
     } catch {
       btn.disabled = false;
       btn.textContent = "Submit report";

@@ -135,7 +135,33 @@ export async function handleSubmit(env: Env, req: Request): Promise<Response> {
       },
       attachments,
     );
-    return json({ ok: true, public_id: publicIdOf(row), id: row.id });
+    // Distribute independent per-destination outcomes to the client so the
+    // Mini App can render "✓ Sent to Telegram / ⚠ GitHub …" accurately.
+    // The Telegram flow succeeded — if it hadn't, createBug would have
+    // thrown before this line. GitHub is inferred from persisted metadata.
+    const github =
+      row.github_issue_number && row.github_issue_url && row.github_repo
+        ? {
+            status: "created" as const,
+            issue_number: row.github_issue_number,
+            issue_url: row.github_issue_url,
+            repo: row.github_repo,
+          }
+        : row.github_status === "skipped_no_mapping"
+        ? { status: "skipped_no_mapping" as const, reason: row.github_error ?? null }
+        : row.github_status === "skipped_disabled"
+        ? { status: "skipped_disabled" as const, reason: row.github_error ?? null }
+        : row.github_status === "failed"
+        ? { status: "failed" as const, reason: row.github_error ?? null }
+        : { status: "not_attempted" as const };
+
+    return json({
+      ok: true,
+      public_id: publicIdOf(row),
+      id: row.id,
+      telegram: { status: "sent" as const },
+      github,
+    });
   } catch (e) {
     log.error("miniapp_submit_failed", e, { user_id: user.id });
     return json({ ok: false, error: "server" }, { status: 500 });

@@ -1,16 +1,17 @@
 // Vox Bugs Bot — canonical enums for categories, severities, statuses.
 // These strings are stored in D1 verbatim; do not rename without a migration.
 
+// Every app that may appear in the App picker. Older names stay in the
+// list so historical bugs still round-trip; adding a name here does NOT
+// automatically create GitHub Issues — that is gated by the presence of
+// a matching entry in src/github/repos.ts.
 export const APPS = [
   "Loomey",
   "Lurelia",
   "Lunixia",
   "VoxTerm",
-  "Asterium",
-  "Lunelia",
-  "Markly",
-  "Tally",
-  "Seery",
+  "Sterium",
+  "Dotti",
 ] as const;
 export type AppName = (typeof APPS)[number];
 

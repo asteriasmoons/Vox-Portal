@@ -25,6 +25,13 @@ export interface BugRow {
   channel_message_id: number | null;
   discussion_message_id: number | null;
   discussion_thread_id: number | null;
+  // GitHub Issue cross-reference — populated by src/github/service.ts.
+  github_repo: string | null;
+  github_issue_number: number | null;
+  github_issue_url: string | null;
+  github_status: string | null;
+  github_error: string | null;
+  github_created_at: number | null;
   duplicate_of_id: number | null;
   created_at: number;
   updated_at: number;

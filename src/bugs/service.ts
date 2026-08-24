@@ -27,6 +27,8 @@ import { sendMessage, TelegramError } from "../telegram/api";
 import { renderReporterDm, renderSubmissionConfirmation } from "./formatting";
 import { NOTIFY_ON_STATUS, type StatusId } from "./constants";
 import { log } from "../util/log";
+import { createIssueForBug, type GitHubOutcome } from "../github/service";
+import { discussionChatId as _discussionChatId } from "../config";
 
 // Attachment payload accepted by createBug.
 export type IncomingAttachment =
@@ -132,7 +134,49 @@ export async function createBug(
     log.warn("reporter_confirmation_failed", { bugId: row.id, err: String(e) });
   }
 
-  return row;
+  // 4) GitHub Issue — a SECOND, independent destination.
+  // Isolated in its own try/catch so nothing here can retro-invalidate the
+  // Telegram submission that already landed. createIssueForBug() itself
+  // never throws (it returns structured GitHubOutcome), but we still wrap
+  // defensively. On success we post an unobtrusive cross-reference into the
+  // discussion thread linking back to the Issue.
+  let githubOutcome: GitHubOutcome | null = null;
+  try {
+    githubOutcome = await createIssueForBug(env, row.id);
+    if (githubOutcome.ok && "number" in githubOutcome && !("skipped" in githubOutcome && githubOutcome.skipped === "already_exists")) {
+      await postGitHubCrossReference(env, row.id, githubOutcome.repo, githubOutcome.number, githubOutcome.url);
+    }
+  } catch (e) {
+    // This branch is defensive — createIssueForBug is contracted not to
+    // throw. Anything that lands here is a bug on our side.
+    log.error("github_outcome_unexpected_throw", e, { bugId: row.id });
+  }
+
+  // Re-read to pick up any freshly-persisted github_* metadata so the caller
+  // (Mini App API / conversation flow) can build a partial-success response.
+  return (await getBug(env, row.id)) ?? row;
+}
+
+// Posts a small "GitHub Issue: #147" message into the bug's discussion thread.
+// Unobtrusive; does NOT modify the ticket message or the report body.
+async function postGitHubCrossReference(
+  env: Env,
+  bugId: number,
+  repoFullName: string,
+  issueNumber: number,
+  issueUrl: string,
+): Promise<void> {
+  try {
+    const row = await getBug(env, bugId);
+    if (!row || !row.discussion_thread_id) return;
+    const text = `🔗 <b>GitHub Issue:</b> <a href="${issueUrl}">#${issueNumber}</a> · ${repoFullName}`;
+    await sendMessage(env, _discussionChatId(env), text, {
+      parse_mode: "HTML",
+      message_thread_id: row.discussion_thread_id,
+    });
+  } catch (e) {
+    log.warn("github_crossref_post_failed", { bugId, err: String(e) });
+  }
 }
 
 async function persistAndPostAttachment(env: Env, row: BugRow, att: IncomingAttachment) {
