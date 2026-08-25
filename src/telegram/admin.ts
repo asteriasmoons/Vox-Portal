@@ -156,7 +156,7 @@ export async function handleAdminCallback(ctx: CallbackCtx): Promise<boolean> {
 
   // ── Back button inside a picker → dismiss ────────────
   if (data.startsWith("rich:back:")) {
-    await dismissPicker(env, chatId, bug.id, fromTgId);
+    await dismissPicker(env, chatId, bug.id, fromTgId, messageId);
     await answerCallbackQuery(env, callbackQueryId);
     return true;
   }
@@ -175,7 +175,7 @@ export async function handleAdminCallback(ctx: CallbackCtx): Promise<boolean> {
         }
         const fromStatus = bug.status;
         const updated = await changeStatus(env, bug.id, value as StatusId, fromTgId);
-        await afterAction(env, callbackQueryId, chatId, bug.id, fromTgId,
+        await afterAction(env, callbackQueryId, chatId, bug.id, fromTgId, messageId,
           `Status → ${statusMeta(value).label}`);
         if (updated) {
           void syncStatusChange(env, updated, fromStatus, value).catch((e) =>
@@ -197,7 +197,7 @@ export async function handleAdminCallback(ctx: CallbackCtx): Promise<boolean> {
           void syncSeverityChange(env, fresh, from, value).catch((e) =>
             log.warn("sync_severity_failed", { bugId: bug.id, err: String(e) }));
         }
-        await afterAction(env, callbackQueryId, chatId, bug.id, fromTgId,
+        await afterAction(env, callbackQueryId, chatId, bug.id, fromTgId, messageId,
           `Severity → ${severityMeta(value).label}`);
         break;
       }
@@ -215,7 +215,7 @@ export async function handleAdminCallback(ctx: CallbackCtx): Promise<boolean> {
           void syncCategoryChange(env, fresh, from, value).catch((e) =>
             log.warn("sync_category_failed", { bugId: bug.id, err: String(e) }));
         }
-        await afterAction(env, callbackQueryId, chatId, bug.id, fromTgId,
+        await afterAction(env, callbackQueryId, chatId, bug.id, fromTgId, messageId,
           `Category → ${categoryMeta(value).label}`);
         break;
       }
@@ -231,18 +231,33 @@ export async function handleAdminCallback(ctx: CallbackCtx): Promise<boolean> {
 }
 
 // Common post-action tidy: delete the ephemeral picker (if any) and ack.
-async function afterAction(env: Env, cbId: string, chatId: number, bugId: number, tgId: number, toast: string) {
-  await dismissPicker(env, chatId, bugId, tgId);
+// `tappedMessageId` is the callback query's own message id — for taps on
+// an ephemeral picker this IS the ephemeral_message_id we need to delete.
+async function afterAction(env: Env, cbId: string, chatId: number, bugId: number, tgId: number, tappedMessageId: number, toast: string) {
+  await dismissPicker(env, chatId, bugId, tgId, tappedMessageId);
   await answerCallbackQuery(env, cbId, toast);
 }
 
-async function dismissPicker(env: Env, chatId: number, bugId: number, tgId: number) {
-  const ephId = await takeEphemeral(env, bugId, tgId);
-  if (!ephId) return;
+async function dismissPicker(env: Env, chatId: number, bugId: number, tgId: number, tappedMessageId?: number) {
+  // Preferred path: the callback that fired came FROM the picker, so its
+  // message id IS the ephemeral_message_id we need. This is robust even
+  // when Telegram returned 0 for message_id on the original send.
+  let ephId = tappedMessageId && tappedMessageId > 0 ? tappedMessageId : 0;
+  if (!ephId) {
+    const stored = await takeEphemeral(env, bugId, tgId);
+    if (stored) ephId = stored;
+  } else {
+    // Clear any KV bookkeeping we may have set at send time.
+    await env.SESSIONS.delete(EPH_KEY(bugId, tgId));
+  }
+  if (!ephId) {
+    log.warn("dismiss_picker_no_id", { bugId, tgId });
+    return;
+  }
   try {
     await deleteEphemeralMessage(env, chatId, ephId);
   } catch (e) {
-    log.warn("ephemeral_delete_failed", { bugId, err: String(e) });
+    log.warn("ephemeral_delete_failed", { bugId, ephId, err: String(e) });
   }
 }
 
