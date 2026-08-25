@@ -33,8 +33,15 @@ export function buttonsRow(buttons: RichMessageButton[], align?: "left" | "cente
 }
 
 // Convenience for a disabled button (currently-selected marker, no-op).
+// Per RichMessageButton spec: "Exactly one of the fields other than text
+// and style must be used to specify the type of the button." Both
+// `callback_data` and `disabled` count as type fields, so setting BOTH
+// silently breaks callback wiring for the entire message. A disabled button
+// therefore carries `disabled` ONLY.
 export function disabledButton(text: string, style?: ButtonStyle): RichMessageButton {
-  return { text, style, callback_data: "noop", disabled: {} };
+  const btn: RichMessageButton = { text, disabled: {} };
+  if (style) btn.style = style;
+  return btn;
 }
 
 // ── Block builders ────────────────────────────────────────

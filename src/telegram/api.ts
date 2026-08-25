@@ -152,6 +152,17 @@ export async function sendRichMessage(
     reply_parameters?: { message_id: number; chat_id?: number | string; allow_sending_without_reply?: boolean };
   } = {},
 ): Promise<TelegramMessage> {
+  // Debug log — dumps only the button-carrying blocks so we can compare the
+  // exact wire JSON against the RichMessageButton schema. Truncated to stay
+  // out of the way of noise. Remove once callback wiring is verified.
+  try {
+    const blocks = (richMessage.blocks ?? []) as { type?: string; buttons?: unknown[] }[];
+    const buttonBlocks = blocks.filter((b) => b?.type === "buttons");
+    if (buttonBlocks.length) {
+      console.log("sendRichMessage.buttons_out", JSON.stringify(buttonBlocks));
+    }
+  } catch { /* noop */ }
+
   return await tgCall<TelegramMessage>(env, "sendRichMessage", {
     chat_id: chatId,
     rich_message: richMessage,
