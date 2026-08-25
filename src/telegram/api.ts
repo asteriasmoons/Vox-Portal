@@ -208,29 +208,38 @@ export async function sendEphemeralRichMessage(
   return await sendRichMessage(env, chatId, richMessage, { ...opts, ephemeral_message_parameters: ephemeral });
 }
 
+// editEphemeralMessageText — Bot API 10.2/10.3.
+// All three of chat_id / receiver_user_id / ephemeral_message_id are REQUIRED
+// per the spec; omitting receiver_user_id gets "Bad Request: invalid
+// receiver_user_id specified".
 export async function editEphemeralRichMessage(
   env: Env,
   chatId: number | string,
+  receiverUserId: number,
   ephemeralMessageId: number,
   richMessage: InputRichMessage,
   opts: { reply_markup?: unknown } = {},
 ): Promise<true | TelegramMessage> {
   return await tgCall<true | TelegramMessage>(env, "editEphemeralMessageText", {
     chat_id: chatId,
-    message_id: ephemeralMessageId,
+    receiver_user_id: receiverUserId,
+    ephemeral_message_id: ephemeralMessageId,
     rich_message: richMessage,
     reply_markup: opts.reply_markup,
   });
 }
 
+// deleteEphemeralMessage — three required params per spec.
 export async function deleteEphemeralMessage(
   env: Env,
   chatId: number | string,
+  receiverUserId: number,
   ephemeralMessageId: number,
 ): Promise<true> {
   return await tgCall<true>(env, "deleteEphemeralMessage", {
     chat_id: chatId,
-    message_id: ephemeralMessageId,
+    receiver_user_id: receiverUserId,
+    ephemeral_message_id: ephemeralMessageId,
   });
 }
 

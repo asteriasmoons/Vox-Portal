@@ -255,7 +255,9 @@ async function dismissPicker(env: Env, chatId: number, bugId: number, tgId: numb
     return;
   }
   try {
-    await deleteEphemeralMessage(env, chatId, ephId);
+    // `tgId` here IS the admin who tapped — Telegram requires the same
+    // receiver_user_id we sent the ephemeral to.
+    await deleteEphemeralMessage(env, chatId, tgId, ephId);
   } catch (e) {
     log.warn("ephemeral_delete_failed", { bugId, ephId, err: String(e) });
   }
