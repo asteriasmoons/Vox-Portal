@@ -43,12 +43,27 @@ CREATE TABLE IF NOT EXISTS bugs (
   github_error          TEXT,
   github_created_at     INTEGER,
 
+  -- Bot API 10.3 Rich Message id inside the discussion thread. Live-updated
+  -- via editMessageText(rich_message) on every state change.
+  report_message_id     INTEGER,
+
   duplicate_of_id       INTEGER REFERENCES bugs(id) ON DELETE SET NULL,
 
   created_at            INTEGER NOT NULL DEFAULT (unixepoch()),
   updated_at            INTEGER NOT NULL DEFAULT (unixepoch())
 );
 CREATE INDEX IF NOT EXISTS idx_bugs_github_issue ON bugs(github_issue_number);
+
+-- One row per logical GitHub management action that has been synced.
+-- action_key is `<bug_id>:<verb>[:<version>]`; UNIQUE prevents retry / replay
+-- from double-posting comments or double-closing an issue.
+CREATE TABLE IF NOT EXISTS github_actions (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  bug_id      INTEGER NOT NULL REFERENCES bugs(id) ON DELETE CASCADE,
+  action_key  TEXT NOT NULL UNIQUE,
+  created_at  INTEGER NOT NULL DEFAULT (unixepoch())
+);
+CREATE INDEX IF NOT EXISTS idx_github_actions_bug ON github_actions(bug_id);
 
 CREATE INDEX IF NOT EXISTS idx_bugs_reporter  ON bugs(reporter_tg_id);
 CREATE INDEX IF NOT EXISTS idx_bugs_status    ON bugs(status);

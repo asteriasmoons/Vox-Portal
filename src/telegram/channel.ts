@@ -25,8 +25,12 @@ import {
   tgCall,
   tgCallMultipart,
   TelegramError,
+  sendRichMessage,
+  editRichMessage,
   type TelegramMessage,
 } from "./api";
+import { buildBugReportRichMessage, managementButtonBlocks } from "./richmessage";
+import { setReportMessageId } from "../db/queries";
 import { adminActionsKeyboard } from "./keyboards";
 import {
   renderChannelTicket,
@@ -60,9 +64,65 @@ export async function refreshChannelTicket(env: Env, row: BugRow): Promise<void>
   }
 }
 
-// Post the detailed report body into the discussion thread of a given bug.
-// If we don't yet know the thread id (mirror hasn't arrived), we wait briefly.
+// Post the bug report as a Bot API 10.3 Rich Message into the discussion
+// thread. Persists the returned message_id so future state changes can
+// editMessageText(rich_message) it in place — the report block always shows
+// live Status / Severity / Category and the correct disabled button set.
+export async function postRichReportToThread(env: Env, row: BugRow): Promise<TelegramMessage | null> {
+  if (!row.discussion_thread_id) return null;
+  const richMessage = buildBugReportRichMessage(row);
+  try {
+    const msg = await sendRichMessage(env, discussionChatId(env), richMessage, {
+      message_thread_id: row.discussion_thread_id,
+    });
+    await setReportMessageId(env, row.id, msg.message_id);
+    return msg;
+  } catch (e) {
+    log.error("rich_report_post_failed", e, { bugId: row.id });
+    return null;
+  }
+}
+
+// Live-update the Rich Message report after any state change.
+export async function refreshRichReport(env: Env, row: BugRow): Promise<void> {
+  if (!row.report_message_id) return;
+  try {
+    await editRichMessage(
+      env,
+      discussionChatId(env),
+      row.report_message_id,
+      buildBugReportRichMessage(row),
+    );
+  } catch (e) {
+    // Telegram returns 400 "message is not modified" if nothing changed —
+    // safe to ignore.
+    log.warn("rich_report_refresh_failed", { bugId: row.id, err: String(e) });
+  }
+}
+
+// Post the detailed report as a Bot API 10.3 Rich Message inside the bug's
+// discussion thread. This is the single "live" management surface — its
+// message_id is persisted so state changes can editMessageText(rich_message)
+// it in place. Kept named postReportToThread so existing callers still work.
 export async function postReportToThread(
+  env: Env,
+  row: BugRow,
+  mirrorMessageIdMaybe: number | null,
+): Promise<TelegramMessage | null> {
+  const mirrorMessageId = mirrorMessageIdMaybe ?? (await waitForDiscussionMirror(env, row.channel_message_id!));
+  if (!mirrorMessageId) {
+    log.warn("discussion_mirror_unresolved_for_report", { bugId: row.id });
+    return null;
+  }
+  // Make sure the row has the thread id set so postRichReportToThread can post.
+  const withThread: BugRow = row.discussion_thread_id
+    ? row
+    : { ...row, discussion_thread_id: mirrorMessageId };
+  return await postRichReportToThread(env, withThread);
+}
+
+// ── Legacy plain-HTML report (unused now, kept for reference/rollback) ──
+async function _legacyPostHtmlReport(
   env: Env,
   row: BugRow,
   mirrorMessageIdMaybe: number | null,

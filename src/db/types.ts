@@ -32,6 +32,8 @@ export interface BugRow {
   github_status: string | null;
   github_error: string | null;
   github_created_at: number | null;
+  // Bot API 10.3 Rich Message id inside the discussion thread.
+  report_message_id: number | null;
   duplicate_of_id: number | null;
   created_at: number;
   updated_at: number;

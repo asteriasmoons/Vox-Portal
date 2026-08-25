@@ -21,6 +21,7 @@ import {
   postTelegramAttachmentToThread,
   postR2AttachmentToThread,
   refreshChannelTicket,
+  refreshRichReport,
   waitForDiscussionMirror,
 } from "../telegram/channel";
 import { sendMessage, TelegramError } from "../telegram/api";
@@ -244,6 +245,9 @@ export async function changeStatus(
   if (!row) return null;
 
   await refreshChannelTicket(env, row);
+  // Bot API 10.3 — live-update the Rich Message so Status / Severity /
+  // Category and the disabled button set match the new state.
+  await refreshRichReport(env, row);
   await postStatusUpdateToThread(env, row, change.from);
 
   if (NOTIFY_ON_STATUS.includes(toStatus) && change.from !== toStatus) {

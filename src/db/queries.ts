@@ -194,6 +194,32 @@ export async function listStatusHistory(env: Env, bugId: number): Promise<Status
   return results ?? [];
 }
 
+// ── Rich Message report id ──────────────────────────────────
+export async function setReportMessageId(env: Env, bugId: number, messageId: number): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE bugs SET report_message_id = ?, updated_at = ? WHERE id = ?`,
+  )
+    .bind(messageId, Math.floor(Date.now() / 1000), bugId)
+    .run();
+}
+
+// ── GitHub action idempotency ───────────────────────────────
+// Returns true if we successfully claimed the action key (safe to run the
+// GitHub side-effect now); false if it was already claimed by a prior
+// invocation and the side-effect must be skipped.
+export async function claimGitHubActionKey(env: Env, bugId: number, actionKey: string): Promise<boolean> {
+  try {
+    await env.DB.prepare(
+      `INSERT INTO github_actions (bug_id, action_key) VALUES (?, ?)`,
+    )
+      .bind(bugId, actionKey)
+      .run();
+    return true;
+  } catch {
+    return false; // UNIQUE violation → already synced
+  }
+}
+
 // ── GitHub cross-reference persistence ──────────────────────
 // Set only the columns you pass; null explicitly clears a column
 // (`github_error` clearing is used after a successful create).

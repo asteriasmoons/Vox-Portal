@@ -110,6 +110,108 @@ export interface TelegramMessage {
   entities?: { type: string; offset: number; length: number }[];
 }
 
+// ── Bot API 10.3 Rich Messages + Ephemeral Messages ───────
+// Sources verified against https://core.telegram.org/bots/api-changelog
+// (Bot API 10.1 Rich Messages foundation, 10.2 Ephemeral Messages,
+// 10.3 RichBlockButtons + DisabledButton + button styles + ephemeral
+// replace_callback_query_message).
+
+export interface EphemeralMessageParameters {
+  receiver_user_id: number;
+  callback_query_id?: string;
+  replace_callback_query_message?: boolean;
+}
+
+// Any structured InputRichMessage body accepted by sendRichMessage /
+// editMessageText. We do not exhaustively type every block variant here;
+// each block is `{ type: "...", ... }` per the Bot API 10.1/10.2/10.3 spec.
+export interface InputRichMessage {
+  blocks?: unknown[];
+  html?: string;
+  markdown?: string;
+  media?: unknown[];
+  is_rtl?: boolean;
+  skip_entity_detection?: boolean;
+}
+
+export async function sendRichMessage(
+  env: Env,
+  chatId: number | string,
+  richMessage: InputRichMessage,
+  opts: {
+    message_thread_id?: number;
+    reply_markup?: unknown;
+    ephemeral_message_parameters?: EphemeralMessageParameters;
+    disable_notification?: boolean;
+  } = {},
+): Promise<TelegramMessage> {
+  return await tgCall<TelegramMessage>(env, "sendRichMessage", {
+    chat_id: chatId,
+    rich_message: richMessage,
+    message_thread_id: opts.message_thread_id,
+    reply_markup: opts.reply_markup,
+    ephemeral_message_parameters: opts.ephemeral_message_parameters,
+    disable_notification: opts.disable_notification,
+  });
+}
+
+// Bot API 10.1+ — editMessageText accepts a `rich_message` parameter.
+export async function editRichMessage(
+  env: Env,
+  chatId: number | string,
+  messageId: number,
+  richMessage: InputRichMessage,
+  opts: { reply_markup?: unknown } = {},
+): Promise<TelegramMessage | true> {
+  return await tgCall<TelegramMessage | true>(env, "editMessageText", {
+    chat_id: chatId,
+    message_id: messageId,
+    rich_message: richMessage,
+    reply_markup: opts.reply_markup,
+  });
+}
+
+// Ephemeral message helpers. Ephemeral messages are visible ONLY to a
+// specific receiver_user_id inside a group; with `replace_callback_query_message:
+// true` they appear IN PLACE OF the message that carried the tapped button —
+// perfect for temporary Status/Severity/Category selectors.
+export async function sendEphemeralRichMessage(
+  env: Env,
+  chatId: number | string,
+  ephemeral: EphemeralMessageParameters,
+  richMessage: InputRichMessage,
+  opts: { message_thread_id?: number; reply_markup?: unknown } = {},
+): Promise<TelegramMessage> {
+  return await sendRichMessage(env, chatId, richMessage, { ...opts, ephemeral_message_parameters: ephemeral });
+}
+
+export async function editEphemeralRichMessage(
+  env: Env,
+  chatId: number | string,
+  ephemeralMessageId: number,
+  richMessage: InputRichMessage,
+  opts: { reply_markup?: unknown } = {},
+): Promise<true | TelegramMessage> {
+  return await tgCall<true | TelegramMessage>(env, "editEphemeralMessageText", {
+    chat_id: chatId,
+    message_id: ephemeralMessageId,
+    rich_message: richMessage,
+    reply_markup: opts.reply_markup,
+  });
+}
+
+export async function deleteEphemeralMessage(
+  env: Env,
+  chatId: number | string,
+  ephemeralMessageId: number,
+): Promise<true> {
+  return await tgCall<true>(env, "deleteEphemeralMessage", {
+    chat_id: chatId,
+    message_id: ephemeralMessageId,
+  });
+}
+
+// Original plain-message helper.
 export async function sendMessage(
   env: Env,
   chatId: number | string,

@@ -18,7 +18,7 @@
 import type { Env } from "../config";
 import type { BugRow, AttachmentRow } from "../db/types";
 import { resolveRepo, derivedLabelsFor, type GitHubRepo } from "./repos";
-import { getBug, listAttachments, saveGitHubMeta } from "../db/queries";
+import { getBug, listAttachments, saveGitHubMeta, claimGitHubActionKey } from "../db/queries";
 import { log } from "../util/log";
 import { publicIdOf } from "../bugs/formatting";
 
@@ -237,6 +237,160 @@ async function tryAddLabels(env: Env, repo: GitHubRepo, issueNumber: number, bug
     { method: "POST", body: JSON.stringify({ labels: wanted }) },
   );
   if (!res.ok) log.warn("github_add_labels_failed", { status: res.status });
+}
+
+// ── Management-action sync ─────────────────────────────
+// Every meaningful admin action calls one of these. Each is idempotent via a
+// per-action key so retries / duplicate callbacks cannot post twice.
+// GitHub failure is logged; it never throws to the caller so the Telegram
+// side always succeeds independently.
+
+export type SyncResult = { ok: true } | { ok: false; skipped: string } | { ok: false; error: string };
+
+function repoOf(bug: BugRow): { owner: string; repo: string } | null {
+  if (!bug.github_repo || !bug.github_issue_number) return null;
+  const [owner, repo] = bug.github_repo.split("/");
+  if (!owner || !repo) return null;
+  return { owner, repo };
+}
+
+async function postComment(env: Env, bug: BugRow, body: string): Promise<SyncResult> {
+  const r = repoOf(bug);
+  if (!r) return { ok: false, skipped: "no_issue" };
+  if (!env.GITHUB_TOKEN) return { ok: false, skipped: "disabled" };
+  try {
+    const res = await ghFetch(env, `${GH_API}/repos/${r.owner}/${r.repo}/issues/${bug.github_issue_number}/comments`, {
+      method: "POST",
+      body: JSON.stringify({ body }),
+    });
+    if (!res.ok) {
+      const t = await res.text();
+      log.error("github_comment_failed", null, { bugId: bug.id, status: res.status, body: t.slice(0, 400) });
+      return { ok: false, error: `HTTP ${res.status}` };
+    }
+    return { ok: true };
+  } catch (e) {
+    log.error("github_comment_exception", e, { bugId: bug.id });
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+async function setIssueState(env: Env, bug: BugRow, state: "open" | "closed", state_reason?: string): Promise<SyncResult> {
+  const r = repoOf(bug);
+  if (!r) return { ok: false, skipped: "no_issue" };
+  if (!env.GITHUB_TOKEN) return { ok: false, skipped: "disabled" };
+  try {
+    const res = await ghFetch(env, `${GH_API}/repos/${r.owner}/${r.repo}/issues/${bug.github_issue_number}`, {
+      method: "PATCH",
+      body: JSON.stringify(state_reason ? { state, state_reason } : { state }),
+    });
+    if (!res.ok) {
+      const t = await res.text();
+      log.error("github_state_change_failed", null, { bugId: bug.id, status: res.status, body: t.slice(0, 400) });
+      return { ok: false, error: `HTTP ${res.status}` };
+    }
+    return { ok: true };
+  } catch (e) {
+    log.error("github_state_change_exception", e, { bugId: bug.id });
+    return { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+// Wrap any sync in the idempotency guard. `actionKey` MUST uniquely identify
+// this logical action (typically includes bug_id, verb, and a monotonic
+// discriminator like the new value or timestamp).
+async function withActionKey(
+  env: Env,
+  bug: BugRow,
+  actionKey: string,
+  run: () => Promise<SyncResult>,
+): Promise<SyncResult> {
+  const claimed = await claimGitHubActionKey(env, bug.id, actionKey);
+  if (!claimed) {
+    log.info("github_action_already_synced", { bugId: bug.id, actionKey });
+    return { ok: false, skipped: "already_synced" };
+  }
+  return await run();
+}
+
+export async function syncStatusChange(env: Env, bug: BugRow, from: string | null, to: string): Promise<SyncResult> {
+  const body =
+`### Status Update
+
+**${prettyStatus(from ?? "—")} → ${prettyStatus(to)}**
+
+_Updated through Vox Bugs._`;
+  const key = `${bug.id}:status:${to}:${Math.floor(Date.now() / 1000)}`;
+  const result = await withActionKey(env, bug, key, () => postComment(env, bug, body));
+
+  // Terminal-state transitions also change the GitHub issue state.
+  if (to === "closed") {
+    await withActionKey(env, bug, `${bug.id}:close:${Math.floor(Date.now() / 1000)}`,
+      () => setIssueState(env, bug, "closed", "completed"));
+  } else if (to === "cannot_reproduce") {
+    await withActionKey(env, bug, `${bug.id}:notplanned:${Math.floor(Date.now() / 1000)}`,
+      () => setIssueState(env, bug, "closed", "not_planned"));
+  } else if ((from === "closed" || from === "cannot_reproduce" || from === "fixed") && to !== "fixed") {
+    await withActionKey(env, bug, `${bug.id}:reopen:${Math.floor(Date.now() / 1000)}`,
+      () => setIssueState(env, bug, "open"));
+  } else if (to === "fixed") {
+    await withActionKey(env, bug, `${bug.id}:fixed:${Math.floor(Date.now() / 1000)}`, async () => {
+      const c = await postComment(env, bug,
+`### Fix Completed
+
+This bug has been marked as fixed through Vox Bugs.${bug.fixed_in_version ? `\n\nFixed in v${bug.fixed_in_version}${bug.fixed_in_build ? ` (build ${bug.fixed_in_build})` : ""}.` : ""}`);
+      return c;
+    });
+    await withActionKey(env, bug, `${bug.id}:fixedclose:${Math.floor(Date.now() / 1000)}`,
+      () => setIssueState(env, bug, "closed", "completed"));
+  }
+  return result;
+}
+
+export async function syncSeverityChange(env: Env, bug: BugRow, from: string, to: string): Promise<SyncResult> {
+  const body =
+`### Severity Updated
+
+**${cap(from)} → ${cap(to)}**
+
+_Updated through Vox Bugs._`;
+  return await withActionKey(env, bug, `${bug.id}:severity:${to}:${Math.floor(Date.now() / 1000)}`,
+    () => postComment(env, bug, body));
+}
+
+export async function syncCategoryChange(env: Env, bug: BugRow, from: string, to: string): Promise<SyncResult> {
+  const body =
+`### Category Updated
+
+**${cap(from)} → ${cap(to)}**
+
+_Updated through Vox Bugs._`;
+  return await withActionKey(env, bug, `${bug.id}:category:${to}:${Math.floor(Date.now() / 1000)}`,
+    () => postComment(env, bug, body));
+}
+
+export async function syncAdminNote(env: Env, bug: BugRow, note: string, byUsername: string): Promise<SyncResult> {
+  const body =
+`### Developer Note
+
+${note}
+
+_Added through Vox Bugs by ${byUsername}._`;
+  return await withActionKey(env, bug, `${bug.id}:note:${hashNote(note)}:${Math.floor(Date.now() / 1000)}`,
+    () => postComment(env, bug, body));
+}
+
+function prettyStatus(s: string): string {
+  return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+function cap(s: string): string {
+  return s.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+function hashNote(s: string): string {
+  // Cheap short hash — good enough for action-key uniqueness on same-bug/same-note.
+  let h = 5381;
+  for (let i = 0; i < s.length; i++) h = ((h << 5) + h) ^ s.charCodeAt(i);
+  return (h >>> 0).toString(16);
 }
 
 // ── HTTP ────────────────────────────────────────────────
