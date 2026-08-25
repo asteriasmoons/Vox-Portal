@@ -143,6 +143,13 @@ export async function sendRichMessage(
     reply_markup?: unknown;
     ephemeral_message_parameters?: EphemeralMessageParameters;
     disable_notification?: boolean;
+    // Bot API `ReplyParameters` — required for Rich Messages to land inside
+    // a linked-discussion comment thread. Setting reply_parameters.message_id
+    // to the auto-forwarded mirror's id makes the Rich Message a REPLY TO
+    // the mirror, i.e. a comment on the original channel post. Without this
+    // sendRichMessage posts as a standalone group message even when
+    // message_thread_id is set.
+    reply_parameters?: { message_id: number; chat_id?: number | string; allow_sending_without_reply?: boolean };
   } = {},
 ): Promise<TelegramMessage> {
   return await tgCall<TelegramMessage>(env, "sendRichMessage", {
@@ -150,6 +157,7 @@ export async function sendRichMessage(
     rich_message: richMessage,
     message_thread_id: opts.message_thread_id,
     reply_markup: opts.reply_markup,
+    reply_parameters: opts.reply_parameters,
     ephemeral_message_parameters: opts.ephemeral_message_parameters,
     disable_notification: opts.disable_notification,
   });

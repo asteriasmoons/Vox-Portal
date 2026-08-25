@@ -72,8 +72,16 @@ export async function postRichReportToThread(env: Env, row: BugRow): Promise<Tel
   if (!row.discussion_thread_id) return null;
   const richMessage = buildBugReportRichMessage(row);
   try {
+    // Target the exact same comment thread the working attachment path
+    // uses: chat_id = discussion group, message_thread_id = mirror id, AND
+    // reply_parameters.message_id = mirror id. The last piece is what
+    // makes sendRichMessage land as a comment on the channel post instead
+    // of a standalone group message. `discussion_thread_id` is set to the
+    // auto-forwarded mirror's id in bugs/service.ts createBug().
+    const mirrorId = row.discussion_thread_id;
     const msg = await sendRichMessage(env, discussionChatId(env), richMessage, {
-      message_thread_id: row.discussion_thread_id,
+      message_thread_id: mirrorId,
+      reply_parameters: { message_id: mirrorId, allow_sending_without_reply: true },
     });
     await setReportMessageId(env, row.id, msg.message_id);
     return msg;
