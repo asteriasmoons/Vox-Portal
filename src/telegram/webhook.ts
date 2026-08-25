@@ -102,6 +102,12 @@ async function onMessage(env: Env, msg: TelegramMessage) {
 
 async function onCallbackQuery(env: Env, cq: NonNullable<Update["callback_query"]>) {
   const data = cq.data ?? "";
+  log.info("callback_query_received", {
+    data,
+    from_id: cq.from.id,
+    chat_id: cq.message?.chat.id,
+    message_id: cq.message?.message_id,
+  });
   const fromTgId = cq.from.id;
   const messageId = cq.message?.message_id;
   const chatId = cq.message?.chat.id;

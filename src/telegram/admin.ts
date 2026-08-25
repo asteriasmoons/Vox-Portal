@@ -89,9 +89,14 @@ export async function handleAdminCallback(ctx: CallbackCtx): Promise<boolean> {
     return true;
   }
 
-  if (!data.startsWith("rich:") && !data.startsWith("menu:") && !data.startsWith("act:")) return false;
+  if (!data.startsWith("rich:") && !data.startsWith("menu:") && !data.startsWith("act:")) {
+    log.warn("admin_callback_grammar_mismatch", { data });
+    return false;
+  }
 
-  if (!isAdmin(env, fromTgId)) {
+  const authorized = isAdmin(env, fromTgId);
+  log.info("admin_callback_authorization", { data, fromTgId, authorized });
+  if (!authorized) {
     await answerCallbackQuery(env, callbackQueryId, "Not authorized.", true);
     return true;
   }
