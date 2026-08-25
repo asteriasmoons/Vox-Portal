@@ -108,6 +108,10 @@ export interface TelegramMessage {
   document?: { file_id: string; mime_type?: string; file_name?: string; file_size?: number };
   animation?: { file_id: string; mime_type?: string; file_name?: string; file_size?: number; width?: number; height?: number };
   entities?: { type: string; offset: number; length: number }[];
+  // Bot API 10.2+ — set when this Message represents an ephemeral message.
+  // The regular `message_id` on ephemerals is often 0/absent; use this id
+  // with editEphemeralMessage* and deleteEphemeralMessage.
+  ephemeral_message_id?: number;
 }
 
 // ── Bot API 10.3 Rich Messages + Ephemeral Messages ───────

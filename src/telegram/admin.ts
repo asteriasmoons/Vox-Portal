@@ -141,7 +141,10 @@ export async function handleAdminCallback(ctx: CallbackCtx): Promise<boolean> {
       const eph = await sendEphemeralRichMessage(env, chatId, ephemeral, picker, {
         message_thread_id: bug.discussion_thread_id ?? undefined,
       });
-      await storeEphemeral(env, bug.id, fromTgId, eph.message_id);
+      // Prefer ephemeral_message_id when Telegram provides it (10.2+ ephemerals);
+      // fall back to message_id for compatibility.
+      const ephId = eph.ephemeral_message_id ?? eph.message_id ?? 0;
+      if (ephId) await storeEphemeral(env, bug.id, fromTgId, ephId);
       // No answerCallbackQuery — ephemeral send already consumed the callback.
     } catch (e) {
       log.error("ephemeral_picker_send_failed", e, { bugId, what });

@@ -109,9 +109,12 @@ async function onCallbackQuery(env: Env, cq: NonNullable<Update["callback_query"
     message_id: cq.message?.message_id,
   });
   const fromTgId = cq.from.id;
-  const messageId = cq.message?.message_id;
+  // For ephemeral messages the regular `message_id` is 0/absent — the id
+  // that matters is `ephemeral_message_id`. We accept either.
+  const anyMsg = cq.message as (typeof cq.message) & { ephemeral_message_id?: number } | undefined;
+  const messageId = anyMsg?.message_id || anyMsg?.ephemeral_message_id || 0;
   const chatId = cq.message?.chat.id;
-  if (!messageId || !chatId) return;
+  if (chatId == null) return;
 
   // Wizard picker taps (private chat).
   if (data.startsWith("wiz:") && cq.message?.chat.type === "private") {
