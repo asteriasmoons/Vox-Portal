@@ -123,8 +123,16 @@ async function onCallbackQuery(env: Env, cq: NonNullable<Update["callback_query"
     }
   }
 
-  // Admin taps in the discussion group.
-  if ((data.startsWith("menu:") || data.startsWith("act:")) && cq.message?.chat.id === discussionChatId(env)) {
+  // Admin taps in the discussion group. `rich:*` is the Bot API 10.3
+  // RichMessageButton grammar; `menu:*` / `act:*` are the pre-10.3
+  // InlineKeyboard grammar kept for in-flight callbacks. `noop` fires from
+  // disabled current-selection buttons and just needs a toast.
+  const isAdminCallback =
+    data === "noop" ||
+    data.startsWith("rich:") ||
+    data.startsWith("menu:") ||
+    data.startsWith("act:");
+  if (isAdminCallback && cq.message?.chat.id === discussionChatId(env)) {
     await handleAdminCallback({
       env,
       callbackQueryId: cq.id,
