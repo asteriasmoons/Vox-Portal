@@ -232,6 +232,103 @@ async function persistAttachment(env: Env, bugId: number, att: IncomingAttachmen
   return await insertAttachment(env, { ...shared, r2_key: att.r2_key });
 }
 
+// ── Resend to Telegram ─────────────────────────────────────
+// Retries the Telegram half of createBug against an existing bug row.
+// Use cases:
+//   • Original submission's Telegram flow failed (channel_message_id IS NULL).
+//   • Rich Message never posted (report_message_id IS NULL).
+//   • Admin explicitly wants a fresh post (`force: true` clears linkage
+//     first so we don't leave a stale channel ticket behind).
+//
+// Preserves BUG-####, GitHub Issue linkage, history, and DB id. If GitHub
+// creation also failed on the first attempt, this call runs createIssueForBug
+// again — which is idempotent via github_issue_number.
+//
+// Returns the refreshed BugRow so the caller can render partial-success.
+export async function resendBugToTelegram(
+  env: Env,
+  bugId: number,
+  opts: { force?: boolean } = {},
+): Promise<{ row: BugRow; telegram: "posted" | "already_posted" | "failed" }> {
+  let row = await getBug(env, bugId);
+  if (!row) throw new Error("bug_not_found");
+
+  // If the ticket already landed and we're not forcing, don't double-post.
+  if (row.channel_message_id && !opts.force) {
+    log.info("resend_skipped_channel_present", { bugId });
+    return { row, telegram: "already_posted" };
+  }
+
+  if (opts.force && row.channel_message_id) {
+    const { clearBugTelegramLinkage } = await import("../db/queries");
+    await clearBugTelegramLinkage(env, bugId);
+    row = (await getBug(env, bugId))!;
+  }
+
+  // 1) Channel ticket
+  let channelMessageId: number;
+  try {
+    channelMessageId = await postChannelTicket(env, row);
+  } catch (e) {
+    log.error("resend_channel_post_failed", e, { bugId });
+    return { row, telegram: "failed" };
+  }
+  row = { ...row, channel_message_id: channelMessageId };
+
+  // 2) Mirror + Rich Message report
+  const mirrorMessageId = await waitForDiscussionMirror(env, channelMessageId);
+  if (!mirrorMessageId) {
+    log.error("resend_mirror_missing", new Error("no discussion mirror"), { bugId });
+    return { row, telegram: "failed" };
+  }
+  await setBugTelegramLinkage(env, row.id, channelMessageId, mirrorMessageId, mirrorMessageId);
+  row = { ...row, discussion_message_id: mirrorMessageId, discussion_thread_id: mirrorMessageId };
+
+  const reportMessage = await postReportToThread(env, row, mirrorMessageId);
+  if (!reportMessage) {
+    log.error("resend_report_post_failed", new Error("no report message"), { bugId });
+    // Channel ticket still landed; report the partial state honestly.
+    row = (await getBug(env, bugId)) ?? row;
+    return { row, telegram: "failed" };
+  }
+
+  // 3) Re-post existing attachments (rows already exist in D1).
+  const { listAttachments, setAttachmentPostedMessage } = await import("../db/queries");
+  const stored = await listAttachments(env, row.id);
+  for (const a of stored) {
+    if (a.posted_message_id) continue; // already sitting in the thread
+    try {
+      await sleep(1100);
+      let posted: number | null = null;
+      if (a.telegram_file_id) {
+        posted = await postTelegramAttachmentToThread(env, row, a.kind, a.telegram_file_id);
+      } else if (a.r2_key) {
+        const obj = await env.ATTACHMENTS.get(a.r2_key);
+        if (obj) {
+          const bytes = await obj.arrayBuffer();
+          posted = await postR2AttachmentToThread(
+            env, row, bytes,
+            a.mime_type ?? obj.httpMetadata?.contentType ?? "application/octet-stream",
+            a.file_name ?? "attachment",
+          );
+        } else {
+          log.warn("resend_r2_missing", { bugId, r2_key: a.r2_key });
+        }
+      }
+      if (posted) await setAttachmentPostedMessage(env, a.id, posted);
+    } catch (e) {
+      log.warn("resend_attachment_failed", { bugId, attachmentId: a.id, err: String(e) });
+    }
+  }
+
+  // 4) GitHub — idempotent; only creates if not already created.
+  try { await createIssueForBug(env, row.id); } catch (e) {
+    log.warn("resend_github_retry_failed", { bugId, err: String(e) });
+  }
+
+  return { row: (await getBug(env, bugId)) ?? row, telegram: "posted" };
+}
+
 // ── Status changes ──────────────────────────────────────────
 export async function changeStatus(
   env: Env,

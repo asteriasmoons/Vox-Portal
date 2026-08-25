@@ -12,6 +12,11 @@ interface BugSummary {
   severity: string;
   category: string;
   created_at: number;
+  // Delivery state (added by handleMyBugs). Missing on older API responses.
+  telegram_posted?: boolean;
+  report_posted?: boolean;
+  github_created?: boolean;
+  github_url?: string | null;
 }
 
 interface BugDetail extends BugSummary {
@@ -110,10 +115,52 @@ function renderRow(bug: BugSummary): HTMLLIElement {
   meta.textContent = `${labelize(bug.category)} · ${labelize(bug.severity)} · ${formatRelative(bug.created_at)}`;
   li.append(row1, title, meta);
 
+  // Delivery banner: shows only when something didn't land on Telegram.
+  // The chip's own click resubmits inline WITHOUT expanding the detail view,
+  // so a stuck report can be retried from the list with one tap.
+  const missing = bug.telegram_posted === false || bug.report_posted === false;
+  if (missing) {
+    const banner = document.createElement("div");
+    banner.className = "delivery-banner";
+    const label = document.createElement("span");
+    label.className = "delivery-label";
+    label.textContent = bug.telegram_posted === false
+      ? "⚠ Not sent to Telegram yet"
+      : "⚠ Report didn't finish posting";
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "resend-chip";
+    btn.textContent = "Resend";
+    btn.onclick = (ev) => {
+      ev.stopPropagation();
+      void resendFromRow(bug.id, btn, label);
+    };
+    banner.append(label, btn);
+    li.appendChild(banner);
+  }
+
   const open = () => void openDetail(bug.id);
   li.addEventListener("click", open);
   li.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") open(); });
   return li;
+}
+
+// Inline resend triggered from the History row's ⚠ chip.
+async function resendFromRow(id: number, btn: HTMLButtonElement, label: HTMLElement): Promise<void> {
+  btn.disabled = true;
+  btn.textContent = "Sending…";
+  try {
+    const res = await fetch(`/api/mybugs/${id}/resubmit`, { method: "POST", headers: authHeaders() });
+    const data = await res.json() as { ok: boolean; error?: string; telegram?: string };
+    if (!res.ok || !data.ok) throw new Error(data.error || "resubmit");
+    label.textContent = "✓ Sent to Telegram";
+    btn.textContent = "Sent";
+  } catch (e) {
+    const code = e instanceof Error ? e.message : "resubmit";
+    label.textContent = friendlyResubmitError(code);
+    btn.disabled = false;
+    btn.textContent = "Retry";
+  }
 }
 async function openDetail(id: number): Promise<void> {
   const list = requireEl("#history-list");
@@ -206,13 +253,14 @@ async function resubmitBug(id: number, button: HTMLButtonElement): Promise<void>
 function friendlyResubmitError(code: string): string {
   switch (code) {
     case "discussion_mirror_missing":
-      return "This older report was created before Vox Bugs started saving Telegram's comment-thread link, so it can't be resubmitted automatically. New reports will have that link saved correctly.";
+    case "discussion_mirror_missing_after_repost":
+      return "Telegram didn't return a comment thread for the channel post in time. Try again in a minute.";
     case "missing_channel_post":
-      return "The original Telegram channel post for this report is missing, so there is nowhere to attach the comment.";
+      return "The original Telegram channel post is missing.";
     case "auth":
-      return "Telegram could not verify this Mini App session. Close Vox Bugs and reopen it from Telegram, then try again.";
+      return "Telegram couldn't verify this Mini App session. Reopen Vox Bugs from Telegram, then try again.";
     default:
-      return "Vox Bugs couldn't send this report to Telegram. Please try again.";
+      return "Couldn't send this report to Telegram. Please try again.";
   }
 }
 

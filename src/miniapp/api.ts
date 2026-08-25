@@ -4,7 +4,7 @@
 
 import type { Env } from "../config";
 import { validateInitData } from "../telegram/initdata";
-import { createBug, type IncomingAttachment } from "../bugs/service";
+import { createBug, resendBugToTelegram, type IncomingAttachment } from "../bugs/service";
 import { postChannelTicket, postReportToThread, postR2AttachmentToThread, postTelegramAttachmentToThread, waitForDiscussionMirror } from "../telegram/channel";
 import { APPS, CATEGORIES, SEVERITIES, FREQUENCIES, CATEGORY_IDS, SEVERITY_IDS } from "../bugs/constants";
 import { listBugsByReporter, getBug, listAttachments, setAttachmentPostedMessage, setBugTelegramLinkage } from "../db/queries";
@@ -188,6 +188,12 @@ export async function handleMyBugs(env: Env, req: Request): Promise<Response> {
       severity: r.severity,
       category: r.category,
       created_at: r.created_at,
+      // Delivery state — history rows use these to decide whether to
+      // render the "Resend to Telegram" affordance.
+      telegram_posted: !!r.channel_message_id,
+      report_posted:   !!r.report_message_id,
+      github_created:  !!r.github_issue_number,
+      github_url:      r.github_issue_url,
     })),
   });
 }
@@ -214,7 +220,29 @@ export async function handleResubmitBug(env: Env, req: Request, id: number): Pro
   catch { return json({ ok: false, error: "auth" }, { status: 401 }); }
   let row = await getBug(env, id);
   if (!row || row.reporter_tg_id !== user.id) return json({ ok: false, error: "not_found" }, { status: 404 });
-  if (!row.channel_message_id) return json({ ok: false, error: "missing_channel_post" }, { status: 409 });
+
+  // Case A: original submission never posted the channel ticket at all —
+  // delegate to the from-scratch resender, which posts channel + mirror +
+  // rich report + attachments in one shot (idempotent GitHub retry included).
+  if (!row.channel_message_id) {
+    try {
+      const { row: fresh, telegram } = await resendBugToTelegram(env, id);
+      return json({
+        ok: true,
+        public_id: publicIdOf(fresh),
+        telegram,
+        report_posted: !!fresh.report_message_id,
+        github_created: !!fresh.github_issue_number,
+        github_url: fresh.github_issue_url,
+      });
+    } catch (e) {
+      log.error("resubmit_from_scratch_failed", e, { bugId: id });
+      return json({ ok: false, error: "server" }, { status: 500 });
+    }
+  }
+
+  // Case B: channel ticket landed but the report / attachments partially
+  // failed — the existing repost-report path below handles it.
 
   let mirrorId = row.discussion_message_id ?? await waitForDiscussionMirror(env, row.channel_message_id, 3000);
 

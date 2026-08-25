@@ -194,6 +194,26 @@ export async function listStatusHistory(env: Env, bugId: number): Promise<Status
   return results ?? [];
 }
 
+// Clear channel/discussion linkage so a "force resend" can post fresh
+// Telegram messages without doubling the channel ticket.
+export async function clearBugTelegramLinkage(env: Env, bugId: number): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE bugs SET
+       channel_message_id    = NULL,
+       discussion_message_id = NULL,
+       discussion_thread_id  = NULL,
+       report_message_id     = NULL,
+       updated_at            = ?
+     WHERE id = ?`,
+  )
+    .bind(Math.floor(Date.now() / 1000), bugId)
+    .run();
+  // Also clear posted_message_id so we can retry attachment posts cleanly.
+  await env.DB.prepare(`UPDATE attachments SET posted_message_id = NULL WHERE bug_id = ?`)
+    .bind(bugId)
+    .run();
+}
+
 // ── Rich Message report id ──────────────────────────────────
 export async function setReportMessageId(env: Env, bugId: number, messageId: number): Promise<void> {
   await env.DB.prepare(

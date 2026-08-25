@@ -350,6 +350,42 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); backgro
 .empty { text-align: center; color: var(--subtext); font-weight: 700; }
 .empty .primary { margin-top: 14px; }
 
+/* Delivery-state banner + inline resend chip on failed history rows. */
+.delivery-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 10px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 178, 74, 0.28);
+  background: rgba(255, 178, 74, 0.08);
+  border-radius: 10px;
+}
+.delivery-label {
+  font-size: 12px;
+  font-weight: 800;
+  color: #ffb14a;
+  letter-spacing: 0.02em;
+}
+.resend-chip {
+  background: var(--grad-button);
+  color: var(--accent-text);
+  border: 0;
+  border-radius: 8px;
+  padding: 6px 12px;
+  font: inherit;
+  font-weight: 900;
+  font-size: 12px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.resend-chip:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
 /* ── Bottom nav ──────────────────────────────────────── */
 #nav {
   position: fixed !important;
