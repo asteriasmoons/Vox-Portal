@@ -129,20 +129,21 @@ export async function handleAdminCallback(ctx: CallbackCtx): Promise<boolean> {
       return true;
     }
 
-    // Bot API 10.3: ephemeral message replaces the report for this user only,
-    // via replace_callback_query_message. Delete-on-back / delete-on-select
-    // restores the report.
+    // Bot API 10.3: ephemeral message replaces the report IN PLACE for
+    // this admin only, via replace_callback_query_message. Do NOT pass
+    // message_thread_id or reply_parameters here — those turn the send
+    // into a new comment in the thread instead of a replacement of the
+    // callback-originating message. The replacement inherits the
+    // location of the tapped message automatically.
     const ephemeral: EphemeralMessageParameters = {
       receiver_user_id: fromTgId,
       callback_query_id: callbackQueryId,
       replace_callback_query_message: true,
     };
     try {
-      const eph = await sendEphemeralRichMessage(env, chatId, ephemeral, picker, {
-        message_thread_id: bug.discussion_thread_id ?? undefined,
-      });
-      // Prefer ephemeral_message_id when Telegram provides it (10.2+ ephemerals);
-      // fall back to message_id for compatibility.
+      const eph = await sendEphemeralRichMessage(env, chatId, ephemeral, picker);
+      // Prefer ephemeral_message_id when Telegram provides it (10.2+
+      // ephemerals); fall back to message_id for compatibility.
       const ephId = eph.ephemeral_message_id ?? eph.message_id ?? 0;
       if (ephId) await storeEphemeral(env, bug.id, fromTgId, ephId);
       // No answerCallbackQuery — ephemeral send already consumed the callback.
