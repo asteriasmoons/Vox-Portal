@@ -407,6 +407,9 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); backgro
 
 /* Type badge on history rows. */
 .type-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-size: 11px;
   font-weight: 900;
   letter-spacing: 0.04em;
@@ -416,8 +419,22 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); backgro
   white-space: nowrap;
   margin-right: 4px;
 }
+.type-badge-glyph {
+  width: 12px;
+  height: 12px;
+  object-fit: contain;
+  /* Recolor the monochrome SVG to match the badge's text color, per type. */
+  filter: brightness(0) invert(1);
+}
 .type-badge-bug  { color: #ffb14a; background: rgba(255, 178, 74, 0.10); border-color: rgba(255, 178, 74, 0.32); }
 .type-badge-idea { color: #ffd23a; background: rgba(255, 210, 58, 0.10); border-color: rgba(255, 210, 58, 0.32); }
+/* Recolor icons to the same warm tone the badge text uses. */
+.type-badge-bug  .type-badge-glyph {
+  filter: brightness(0) saturate(100%) invert(72%) sepia(66%) saturate(720%) hue-rotate(346deg) brightness(101%) contrast(101%);
+}
+.type-badge-idea .type-badge-glyph {
+  filter: brightness(0) saturate(100%) invert(85%) sepia(59%) saturate(700%) hue-rotate(347deg) brightness(103%) contrast(101%);
+}
 
 /* Delivery-state banner + inline resend chip on failed history rows. */
 .delivery-banner {

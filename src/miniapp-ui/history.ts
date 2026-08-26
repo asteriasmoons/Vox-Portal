@@ -116,9 +116,17 @@ function renderRow(bug: BugSummary & { type?: "bug" | "idea"; app?: string }): H
   const row1 = document.createElement("div");
   row1.className = "row1";
   // Type badge distinguishes bugs from ideas at a glance.
+  // Uses the same monochrome SVGs as the Create landing cards, tinted to
+  // match the badge color via CSS filter — no emojis anywhere in the UI.
   const typeBadge = document.createElement("span");
   typeBadge.className = `type-badge type-badge-${isIdea ? "idea" : "bug"}`;
-  typeBadge.textContent = isIdea ? "💡 Idea" : "🐛 Bug";
+  const badgeIcon = document.createElement("img");
+  badgeIcon.className = "type-badge-glyph";
+  badgeIcon.alt = "";
+  badgeIcon.src = isIdea ? "/icons/decorbulb.svg" : "/icons/cutebug.svg";
+  const badgeText = document.createElement("span");
+  badgeText.textContent = isIdea ? "Idea" : "Bug";
+  typeBadge.append(badgeIcon, badgeText);
   const pub = document.createElement("span");
   pub.className = "pubid";
   pub.textContent = bug.public_id;
