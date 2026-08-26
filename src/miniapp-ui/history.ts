@@ -134,7 +134,18 @@ function renderRow(bug: BugSummary & { type?: "bug" | "idea"; app?: string }): H
   title.textContent = bug.title;
   const meta = document.createElement("div");
   meta.className = "meta";
-  meta.textContent = `${labelize(bug.category)} · ${labelize(bug.severity)} · ${formatRelative(bug.created_at)}`;
+  // Meta line varies by type: bugs show category · severity, ideas show
+  // app · created-at. Guard every field — an undefined slipping into
+  // labelize() throws and would kill the whole render.
+  const parts: string[] = [];
+  if (isIdea) {
+    if (bug.app) parts.push(String(bug.app));
+  } else {
+    if (bug.category) parts.push(labelize(String(bug.category)));
+    if (bug.severity) parts.push(labelize(String(bug.severity)));
+  }
+  parts.push(formatRelative(bug.created_at));
+  meta.textContent = parts.join(" · ");
   li.append(row1, title, meta);
 
   // Delivery banner: shows only when something didn't land on Telegram.

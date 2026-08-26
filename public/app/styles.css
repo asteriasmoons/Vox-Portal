@@ -367,6 +367,11 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); backgro
 .create-card:active { transform: scale(0.985); }
 .create-card:hover  { border-color: var(--border-strong); }
 .create-card-glyph { width: 44px; height: 44px; flex: 0 0 auto; }
+/* Force any monochrome SVG icon to pure white — works because these SVGs
+   render as a single color regardless of source fill. */
+.create-card-glyph-white {
+  filter: brightness(0) invert(1);
+}
 .create-card-body { flex: 1; }
 .create-card-title { font-size: 18px; font-weight: 900; letter-spacing: -0.01em; margin-bottom: 4px; }
 .create-card-desc  { color: var(--subtext); font-weight: 600; font-size: 13px; line-height: 1.4; }
