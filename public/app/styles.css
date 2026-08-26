@@ -533,9 +533,11 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); backgro
 }
 .nav-btn.active .nav-glyph {
   opacity: 1;
+  /* Recolor the monochrome nav icon to a light purple that matches the
+     active-label gradient — no more warm orange filter. */
   filter:
     brightness(0) saturate(100%)
-    invert(64%) sepia(85%) saturate(1400%) hue-rotate(357deg) brightness(103%) contrast(101%);
+    invert(48%) sepia(28%) saturate(1700%) hue-rotate(220deg) brightness(95%) contrast(92%);
 }
 
 /* ── Submission success redesign ─────────────────────── */
