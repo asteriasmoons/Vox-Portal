@@ -159,7 +159,9 @@ function renderRow(bug: BugSummary & { type?: "bug" | "idea"; app?: string }): H
   // Delivery banner: shows only when something didn't land on Telegram.
   // The chip's own click resubmits inline WITHOUT expanding the detail view,
   // so a stuck report can be retried from the list with one tap.
-  const missing = bug.telegram_posted === false || bug.report_posted === false;
+  // IDEAS don't yet have a resend endpoint — hide the banner so tapping
+  // it can't accidentally resend a bug with the same numeric id.
+  const missing = !isIdea && (bug.telegram_posted === false || bug.report_posted === false);
   if (missing) {
     const banner = document.createElement("div");
     banner.className = "delivery-banner";
@@ -244,13 +246,23 @@ function renderIdeaDetail(idea: Record<string, unknown>): void {
   setText("#detail-status", labelize(String(idea.status ?? "")));
   setText("#detail-app", String(idea.app ?? ""));
 
-  // Hide bug-only grid cells for ideas. Each cell is a `<div>` whose child
-  // <strong> carries the target id — walk to the parent to hide the whole
-  // label + value block.
+  // Hide bug-only grid cells for ideas and let the App cell span the full
+  // width so long app names aren't truncated.
   for (const id of ["detail-version","detail-build","detail-device","detail-os","detail-category","detail-severity","detail-frequency"]) {
     const el = document.getElementById(id);
     const cell = el?.parentElement as HTMLElement | null | undefined;
     if (cell) cell.style.display = "none";
+  }
+  const appCell = document.getElementById("detail-app")?.parentElement as HTMLElement | null;
+  if (appCell) {
+    appCell.style.gridColumn = "1 / -1";
+    appCell.style.maxWidth = "none";
+  }
+  const appStrong = document.getElementById("detail-app") as HTMLElement | null;
+  if (appStrong) {
+    appStrong.style.whiteSpace = "normal";
+    appStrong.style.overflow = "visible";
+    appStrong.style.textOverflow = "clip";
   }
 
   // Relabel the copy-card headings to match idea field names, and populate.
@@ -304,6 +316,11 @@ function renderDetail(bug: BugDetail, attachments: AttachmentDetail[]): void {
     const cell = el?.parentElement as HTMLElement | null | undefined;
     if (cell) cell.style.display = "";
   }
+  // Restore the App cell's default single-column layout for bugs.
+  const appCell = document.getElementById("detail-app")?.parentElement as HTMLElement | null;
+  if (appCell) { appCell.style.gridColumn = ""; appCell.style.maxWidth = ""; }
+  const appStrong = document.getElementById("detail-app") as HTMLElement | null;
+  if (appStrong) { appStrong.style.whiteSpace = ""; appStrong.style.overflow = ""; appStrong.style.textOverflow = ""; }
   const copyCard = document.querySelector<HTMLElement>(".detail-copy-card");
   if (copyCard) {
     const headings = copyCard.querySelectorAll("h2, h3");
