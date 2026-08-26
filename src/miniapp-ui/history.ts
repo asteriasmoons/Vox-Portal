@@ -180,7 +180,7 @@ function renderRow(bug: BugSummary & { type?: "bug" | "idea"; app?: string }): H
     li.appendChild(banner);
   }
 
-  const open = () => void openDetail(bug.id);
+  const open = () => void openDetail(bug.id, isIdea ? "idea" : "bug");
   li.addEventListener("click", open);
   li.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") open(); });
   return li;
@@ -203,7 +203,7 @@ async function resendFromRow(id: number, btn: HTMLButtonElement, label: HTMLElem
     btn.textContent = "Retry";
   }
 }
-async function openDetail(id: number): Promise<void> {
+async function openDetail(id: number, type: "bug" | "idea" = "bug"): Promise<void> {
   const list = requireEl("#history-list");
   const detail = requireEl("#history-detail");
   const loading = requireEl("#history-detail-loading");
@@ -214,6 +214,15 @@ async function openDetail(id: number): Promise<void> {
   content.classList.add("hidden");
 
   try {
+    if (type === "idea") {
+      const res = await fetch(`/api/myideas/${id}`, { headers: authHeaders() });
+      const data = await res.json() as { ok: boolean; idea?: import("./api").SubmitPayload & Record<string, unknown> };
+      if (!res.ok || !data.ok || !data.idea) throw new Error("detail");
+      renderIdeaDetail(data.idea);
+      loading.classList.add("hidden");
+      content.classList.remove("hidden");
+      return;
+    }
     const res = await fetch(`/api/mybugs/${id}`, { headers: authHeaders() });
     const data = await res.json() as { ok: boolean; bug?: BugDetail; attachments?: AttachmentDetail[] };
     if (!res.ok || !data.ok || !data.bug) throw new Error("detail");
@@ -221,8 +230,46 @@ async function openDetail(id: number): Promise<void> {
     loading.classList.add("hidden");
     content.classList.remove("hidden");
   } catch {
-    loading.textContent = "Couldn't load this report.";
+    loading.textContent = "Couldn't load this record.";
   }
+}
+
+// Minimal detail renderer for ideas: fill any matching #detail-* fields
+// with idea data. Bug-only fields (Version, Build, Device, OS, Category,
+// Severity) are cleared. Ideas don't have a resubmit affordance yet.
+function renderIdeaDetail(idea: Record<string, unknown>): void {
+  const get = (k: string) => (idea[k] as string | null | undefined) ?? "";
+  setText("#detail-public-id", String(idea.public_id ?? ""));
+  setText("#detail-title", String(idea.title ?? ""));
+  setText("#detail-status", labelize(String(idea.status ?? "")));
+  setText("#detail-app", String(idea.app ?? ""));
+  setText("#detail-version", "—");
+  setText("#detail-build", "—");
+  setText("#detail-device", "—");
+  setText("#detail-os", "—");
+  setText("#detail-category", "Feature Idea");
+  setText("#detail-severity", "—");
+  setText("#detail-actual", get("what_i_want"));
+  setText("#detail-expected", get("why_useful") || "Not provided");
+  setText("#detail-steps", get("how_it_works") || "Not provided");
+  setText("#detail-frequency", get("where_it_belongs") || "Not specified");
+  setText("#detail-notes", get("notes") || "None");
+  const createdAt = Number(idea.created_at ?? 0);
+  setText("#detail-submitted", createdAt ? new Date(createdAt * 1000).toLocaleString() : "");
+
+  // Empty attachments list — idea attachments aren't listed in this MVP view.
+  const attachmentList = document.getElementById("detail-attachments");
+  if (attachmentList) {
+    attachmentList.innerHTML = "";
+    const li = document.createElement("li");
+    li.className = "detail-attachment empty-attachment";
+    li.textContent = "See the Telegram thread for any attachments.";
+    attachmentList.appendChild(li);
+  }
+
+  // Hide the resubmit button for ideas.
+  const rb = document.getElementById("detail-resubmit") as HTMLButtonElement | null;
+  if (rb) rb.style.display = "none";
 }
 
 function renderDetail(bug: BugDetail, attachments: AttachmentDetail[]): void {

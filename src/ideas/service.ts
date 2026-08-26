@@ -191,6 +191,11 @@ export async function createIdea(
 export async function postIdeaRichReport(env: Env, row: IdeaRow, mirrorId: number): Promise<TelegramMessage | null> {
   try {
     const rich = buildIdeaReportRichMessage(row);
+    log.info("idea_rich_report_sending", {
+      ideaId: row.id,
+      mirrorId,
+      block_count: rich.blocks.length,
+    });
     const msg = await sendRichMessage(env, discussionChatId(env), rich, {
       message_thread_id: mirrorId,
       reply_parameters: { message_id: mirrorId, allow_sending_without_reply: true },
@@ -199,7 +204,15 @@ export async function postIdeaRichReport(env: Env, row: IdeaRow, mirrorId: numbe
     await setIdeaReportMessageId(env, row.id, msg.message_id);
     return msg;
   } catch (e) {
-    log.error("idea_rich_report_post_failed", e, { ideaId: row.id });
+    // Log with the concrete Telegram error so we can see WHY the send failed —
+    // silent failures were producing an unhelpful "Telegram delivery failed"
+    // banner with no diagnostic.
+    const errMsg = e instanceof Error ? e.message : String(e);
+    log.error("idea_rich_report_post_failed", e, {
+      ideaId: row.id,
+      mirrorId,
+      err: errMsg,
+    });
     return null;
   }
 }

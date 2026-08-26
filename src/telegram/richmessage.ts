@@ -277,12 +277,13 @@ export function buildIdeaReportRichMessage(idea: IdeaRow): { blocks: unknown[] }
   const blocks: unknown[] = [];
   const st = ideaStatusMeta(idea.status);
 
-  blocks.push(heading(`💡 IDEA — ${ideaPublicId(idea)}`, 2));
+  // Plain text in headings — see comment on decision-row buttons above.
+  blocks.push(heading(`IDEA — ${ideaPublicId(idea)}`, 2));
   blocks.push(paragraph(idea.title));
 
   blocks.push(kvTable([
     ["App",    idea.app],
-    ["Status", `${st.emoji} ${st.label}`],
+    ["Status", st.label],
   ]));
 
   blocks.push(divider());
@@ -348,30 +349,32 @@ export function ideaManagementButtonBlocks(idea: IdeaRow): unknown[] {
     ]));
   }
 
-  // Decision row.
+  // Decision row. No emojis in button text — Bot API 10.3 button `text` is
+  // RichText and only accepts plain text + RichTextCustomEmoji + DateTime
+  // entities, so raw unicode emoji occasionally trip Telegram's validator.
   rows.push(buttonsRow([
     isAccepted
-      ? disabledButton("✓ Accepted", "success")
-      : { text: "✅ Accept", style: "success", callback_data: cb("act", "status:accepted") },
+      ? disabledButton("Accepted", "success")
+      : { text: "Accept", style: "success", callback_data: cb("act", "status:accepted") },
     isRejected
-      ? disabledButton("✓ Rejected", "danger")
-      : { text: "❌ Reject", style: "danger", callback_data: cb("act", "status:rejected") },
+      ? disabledButton("Rejected", "danger")
+      : { text: "Reject", style: "danger", callback_data: cb("act", "status:rejected") },
   ]));
 
   // Implementation stages appear only once the idea has been accepted.
   if (decided && !isRejected) {
     rows.push(buttonsRow([
       isInProgress
-        ? disabledButton("✓ In Progress")
-        : { text: "🔵 In Progress", style: "primary", callback_data: cb("act", "status:in_progress") },
+        ? disabledButton("In Progress")
+        : { text: "In Progress", style: "primary", callback_data: cb("act", "status:in_progress") },
       isTesting
-        ? disabledButton("✓ In Testing")
-        : { text: "🟣 In Testing", style: "primary", callback_data: cb("act", "status:in_testing") },
+        ? disabledButton("In Testing")
+        : { text: "In Testing", style: "primary", callback_data: cb("act", "status:in_testing") },
     ]));
     rows.push(buttonsRow([
       isShipped
-        ? disabledButton("✓ Shipped", "success")
-        : { text: "🚢 Mark Shipped", style: "success", callback_data: cb("act", "status:shipped") },
+        ? disabledButton("Shipped", "success")
+        : { text: "Mark Shipped", style: "success", callback_data: cb("act", "status:shipped") },
     ]));
   }
 

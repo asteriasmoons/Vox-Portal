@@ -6,7 +6,7 @@ import type { Env } from "../config";
 import { validateInitData } from "../telegram/initdata";
 import { createBug, resendBugToTelegram, type IncomingAttachment } from "../bugs/service";
 import { createIdea, type IncomingIdeaAttachment } from "../ideas/service";
-import { listIdeasByReporter } from "../db/queries";
+import { listIdeasByReporter, getIdea, listIdeaAttachments } from "../db/queries";
 import { ideaPublicId } from "../ideas/formatting";
 import { postChannelTicket, postReportToThread, postR2AttachmentToThread, postTelegramAttachmentToThread, waitForDiscussionMirror } from "../telegram/channel";
 import { APPS, CATEGORIES, SEVERITIES, FREQUENCIES, CATEGORY_IDS, SEVERITY_IDS } from "../bugs/constants";
@@ -169,6 +169,24 @@ export async function handleSubmit(env: Env, req: Request): Promise<Response> {
     log.error("miniapp_submit_failed", e, { user_id: user.id });
     return json({ ok: false, error: "server" }, { status: 500 });
   }
+}
+
+// GET /api/myideas/:id — full detail of one of the caller's ideas. Ideas
+// and bugs each have their own auto-increment id, so tapping IDEA-0001
+// must go here (not to /api/mybugs/1, which would return BUG-0001).
+export async function handleMyIdeaDetail(env: Env, req: Request, id: number): Promise<Response> {
+  const initData = req.headers.get("x-telegram-init-data") ?? "";
+  let user;
+  try { ({ user } = await validateInitData(env, initData)); }
+  catch { return json({ ok: false, error: "auth" }, { status: 401 }); }
+  const row = await getIdea(env, id);
+  if (!row || row.reporter_tg_id !== user.id) return json({ ok: false, error: "not_found" }, { status: 404 });
+  const atts = await listIdeaAttachments(env, row.id);
+  return json({
+    ok: true,
+    idea: { ...row, public_id: ideaPublicId(row) },
+    attachments: atts.map((a) => ({ id: a.id, kind: a.kind, file_name: a.file_name, mime_type: a.mime_type, size_bytes: a.size_bytes, posted_message_id: a.posted_message_id })),
+  });
 }
 
 // POST /api/submit-idea — creates a Feature Idea (Telegram + GitHub Discussion).
