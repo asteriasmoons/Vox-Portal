@@ -234,30 +234,55 @@ async function openDetail(id: number, type: "bug" | "idea" = "bug"): Promise<voi
   }
 }
 
-// Minimal detail renderer for ideas: fill any matching #detail-* fields
-// with idea data. Bug-only fields (Version, Build, Device, OS, Category,
-// Severity) are cleared. Ideas don't have a resubmit affordance yet.
+// Detail renderer for ideas. The detail template is shared with bugs, so
+// we hide bug-only grid cells (Version, Build, Device, OS, Category,
+// Severity, Frequency) and relabel the copy-card headings to idea terms.
 function renderIdeaDetail(idea: Record<string, unknown>): void {
   const get = (k: string) => (idea[k] as string | null | undefined) ?? "";
   setText("#detail-public-id", String(idea.public_id ?? ""));
   setText("#detail-title", String(idea.title ?? ""));
   setText("#detail-status", labelize(String(idea.status ?? "")));
   setText("#detail-app", String(idea.app ?? ""));
-  setText("#detail-version", "—");
-  setText("#detail-build", "—");
-  setText("#detail-device", "—");
-  setText("#detail-os", "—");
-  setText("#detail-category", "Feature Idea");
-  setText("#detail-severity", "—");
-  setText("#detail-actual", get("what_i_want"));
-  setText("#detail-expected", get("why_useful") || "Not provided");
-  setText("#detail-steps", get("how_it_works") || "Not provided");
-  setText("#detail-frequency", get("where_it_belongs") || "Not specified");
-  setText("#detail-notes", get("notes") || "None");
+
+  // Hide bug-only grid cells for ideas. Each cell is a `<div>` whose child
+  // <strong> carries the target id — walk to the parent to hide the whole
+  // label + value block.
+  for (const id of ["detail-version","detail-build","detail-device","detail-os","detail-category","detail-severity","detail-frequency"]) {
+    const el = document.getElementById(id);
+    const cell = el?.parentElement as HTMLElement | null | undefined;
+    if (cell) cell.style.display = "none";
+  }
+
+  // Relabel the copy-card headings to match idea field names, and populate.
+  const copyCard = document.querySelector<HTMLElement>(".detail-copy-card");
+  if (copyCard) {
+    const headings = copyCard.querySelectorAll("h2, h3");
+    const labels = ["What I Want", "Why It Would Be Useful", "How It Should Work", "Additional Notes"];
+    headings.forEach((h, i) => { if (labels[i]) h.textContent = labels[i]; });
+  }
+  setText("#detail-actual",   get("what_i_want"));
+  setText("#detail-expected", get("why_useful")   || "Not provided");
+  setText("#detail-steps",    get("how_it_works") || "Not provided");
+  setText("#detail-notes",    get("notes")        || "None");
+
+  // Where It Belongs — the bug template has no field for this. Inject a
+  // dedicated row into the copy card so the info isn't lost.
+  const where = String(get("where_it_belongs") || "").trim();
+  const existingWhere = document.getElementById("detail-where-belongs");
+  if (existingWhere) existingWhere.remove();
+  if (where && copyCard) {
+    const h = document.createElement("h3");
+    h.textContent = "Where It Belongs";
+    const p = document.createElement("p");
+    p.id = "detail-where-belongs";
+    p.textContent = where;
+    copyCard.appendChild(h);
+    copyCard.appendChild(p);
+  }
+
   const createdAt = Number(idea.created_at ?? 0);
   setText("#detail-submitted", createdAt ? new Date(createdAt * 1000).toLocaleString() : "");
 
-  // Empty attachments list — idea attachments aren't listed in this MVP view.
   const attachmentList = document.getElementById("detail-attachments");
   if (attachmentList) {
     attachmentList.innerHTML = "";
@@ -267,12 +292,30 @@ function renderIdeaDetail(idea: Record<string, unknown>): void {
     attachmentList.appendChild(li);
   }
 
-  // Hide the resubmit button for ideas.
   const rb = document.getElementById("detail-resubmit") as HTMLButtonElement | null;
   if (rb) rb.style.display = "none";
 }
 
 function renderDetail(bug: BugDetail, attachments: AttachmentDetail[]): void {
+  // Restore the bug view: un-hide any cells the idea view may have hidden,
+  // restore the copy-card labels, and remove any idea-only injections.
+  for (const id of ["detail-version","detail-build","detail-device","detail-os","detail-category","detail-severity","detail-frequency"]) {
+    const el = document.getElementById(id);
+    const cell = el?.parentElement as HTMLElement | null | undefined;
+    if (cell) cell.style.display = "";
+  }
+  const copyCard = document.querySelector<HTMLElement>(".detail-copy-card");
+  if (copyCard) {
+    const headings = copyCard.querySelectorAll("h2, h3");
+    const bugLabels = ["What happened?", "Expected", "Steps to reproduce", "Additional notes"];
+    headings.forEach((h, i) => { if (bugLabels[i]) h.textContent = bugLabels[i]; });
+  }
+  const wb = document.getElementById("detail-where-belongs");
+  if (wb) wb.previousElementSibling?.remove(); // remove the injected <h3>
+  if (wb) wb.remove();
+  const rb = document.getElementById("detail-resubmit") as HTMLButtonElement | null;
+  if (rb) rb.style.display = "";
+
   setText("#detail-public-id", bug.public_id);
   setText("#detail-title", bug.title);
   setText("#detail-status", STATUS_LABEL[bug.status] ?? labelize(bug.status));

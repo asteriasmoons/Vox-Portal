@@ -331,3 +331,107 @@ function commentThreadId(row: BugRow): number {
 
 // Explicit re-export so index.ts stays clean.
 export { editMessageReplyMarkup, copyMessage };
+
+// ──────────────────────────────────────────────────────────
+// Feature Idea equivalents. Structurally identical to the bug helpers
+// above so ideas take exactly the working code path — different data
+// only. If this file's bug helpers change, mirror the change here.
+// ──────────────────────────────────────────────────────────
+import type { IdeaRow } from "../db/types";
+import { setIdeaTelegramLinkage, setIdeaReportMessageId } from "../db/queries";
+import { renderIdeaChannelTicket } from "../ideas/formatting";
+import { buildIdeaReportRichMessage } from "./richmessage";
+
+export async function postIdeaChannelTicket(env: Env, row: IdeaRow): Promise<number> {
+  const msg = await sendMessage(env, channelId(env), renderIdeaChannelTicket(row), {
+    parse_mode: "HTML",
+    disable_web_page_preview: true,
+  });
+  await setIdeaTelegramLinkage(env, row.id, msg.message_id, null, null);
+  return msg.message_id;
+}
+
+export async function postIdeaRichReportToThread(env: Env, row: IdeaRow): Promise<TelegramMessage | null> {
+  if (!row.discussion_thread_id) return null;
+  const richMessage = buildIdeaReportRichMessage(row);
+  try {
+    const mirrorId = row.discussion_thread_id;
+    const msg = await sendRichMessage(env, discussionChatId(env), richMessage, {
+      message_thread_id: mirrorId,
+      reply_parameters: { message_id: mirrorId, allow_sending_without_reply: true },
+    });
+    await setIdeaReportMessageId(env, row.id, msg.message_id);
+    return msg;
+  } catch (e) {
+    log.error("idea_rich_report_post_failed", e, { ideaId: row.id });
+    return null;
+  }
+}
+
+export async function postIdeaReportToThread(
+  env: Env,
+  row: IdeaRow,
+  mirrorMessageIdMaybe: number | null,
+): Promise<TelegramMessage | null> {
+  const mirrorMessageId = mirrorMessageIdMaybe ?? (await waitForDiscussionMirror(env, row.channel_message_id!));
+  if (!mirrorMessageId) {
+    log.warn("idea_discussion_mirror_unresolved_for_report", { ideaId: row.id });
+    return null;
+  }
+  const withThread: IdeaRow = row.discussion_thread_id
+    ? row
+    : { ...row, discussion_thread_id: mirrorMessageId };
+  return await postIdeaRichReportToThread(env, withThread);
+}
+
+export async function refreshIdeaRichReport(env: Env, row: IdeaRow): Promise<void> {
+  if (!row.report_message_id) return;
+  try {
+    await editRichMessage(env, discussionChatId(env), row.report_message_id, buildIdeaReportRichMessage(row));
+  } catch (e) {
+    log.warn("idea_rich_report_refresh_failed", { ideaId: row.id, err: String(e) });
+  }
+}
+
+export async function postIdeaTelegramAttachmentToThread(
+  env: Env,
+  row: IdeaRow,
+  kind: "photo" | "video" | "document" | "animation",
+  fileId: string,
+  caption?: string,
+): Promise<number | null> {
+  if (!row.discussion_thread_id) return null;
+  const chat = discussionChatId(env);
+  const opts = { message_thread_id: row.discussion_thread_id, caption, parse_mode: "HTML" as const };
+  let msg: TelegramMessage;
+  switch (kind) {
+    case "photo":     msg = await sendPhoto(env, chat, fileId, opts); break;
+    case "video":     msg = await sendVideo(env, chat, fileId, opts); break;
+    case "animation": msg = await tgCall<TelegramMessage>(env, "sendAnimation", { chat_id: chat, animation: fileId, ...opts }); break;
+    case "document":
+    default:          msg = await sendDocument(env, chat, fileId, opts);
+  }
+  return msg.message_id;
+}
+
+export async function postIdeaR2AttachmentToThread(
+  env: Env,
+  row: IdeaRow,
+  bytes: ArrayBuffer,
+  mime: string,
+  fileName: string,
+): Promise<number | null> {
+  if (!row.discussion_thread_id) return null;
+  const chat = discussionChatId(env);
+  const form = new FormData();
+  form.append("chat_id", String(chat));
+  form.append("message_thread_id", String(row.discussion_thread_id));
+  const blob = new Blob([bytes], { type: mime });
+  let method = "sendDocument"; let field = "document";
+  if (mime.startsWith("image/") && mime !== "image/gif") { method = "sendPhoto"; field = "photo"; }
+  else if (mime.startsWith("video/")) { method = "sendVideo"; field = "video"; }
+  else if (mime === "image/gif")      { method = "sendAnimation"; field = "animation"; }
+  form.append(field, blob, fileName);
+  const msg = await tgCallMultipart<TelegramMessage>(env, method, form);
+  return msg.message_id;
+}

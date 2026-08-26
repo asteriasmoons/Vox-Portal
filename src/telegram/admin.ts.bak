@@ -459,7 +459,7 @@ async function handleReasonCommand(
 
   const fresh = await getIdea(env, ideaId);
   if (!fresh) return true;
-  const { refreshIdeaRichReport } = await import("./channel");
+  const { refreshIdeaRichReport } = await import("../ideas/service");
   await refreshIdeaRichReport(env, fresh);
 
   if (fresh.github_discussion_id) {

@@ -224,7 +224,7 @@ export async function handleSubmitIdea(env: Env, req: Request): Promise<Response
   }
 
   try {
-    const outcome = await createIdea(
+    const row = await createIdea(
       env,
       {
         reporter_tg_id: user.id,
@@ -240,12 +240,25 @@ export async function handleSubmitIdea(env: Env, req: Request): Promise<Response
       },
       attachments,
     );
+    // Mirrors the bug submit response shape: Telegram is "sent" if createIdea
+    // returned without throwing (both channel post and rich report succeeded).
+    // GitHub outcome is derived from the persisted meta.
+    const github =
+      row.github_comment_id && row.github_comment_url
+        ? { status: "created" as const, comment_id: row.github_comment_id, comment_url: row.github_comment_url }
+        : row.github_status === "skipped_no_mapping"
+        ? { status: "skipped_no_mapping" as const, reason: row.github_error ?? null }
+        : row.github_status === "skipped_disabled"
+        ? { status: "skipped_disabled" as const, reason: row.github_error ?? null }
+        : row.github_status === "failed"
+        ? { status: "failed" as const, reason: row.github_error ?? null }
+        : { status: "not_attempted" as const };
     return json({
       ok: true,
-      public_id: ideaPublicId(outcome.row),
-      id: outcome.row.id,
-      telegram: { status: outcome.telegram },
-      github: outcome.github,
+      public_id: ideaPublicId(row),
+      id: row.id,
+      telegram: { status: "sent" as const },
+      github,
     });
   } catch (e) {
     log.error("miniapp_submit_idea_failed", e, { user_id: user.id });
