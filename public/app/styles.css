@@ -350,6 +350,42 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); backgro
 .empty { text-align: center; color: var(--subtext); font-weight: 700; }
 .empty .primary { margin-top: 14px; }
 
+/* Two-card create-landing screen. */
+.create-card {
+  display: flex; gap: 14px; align-items: flex-start;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0) 40%),
+    var(--card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 18px;
+  margin-bottom: 14px;
+  color: inherit;
+  text-decoration: none;
+  transition: transform 120ms ease, border-color 120ms ease;
+}
+.create-card:active { transform: scale(0.985); }
+.create-card:hover  { border-color: var(--border-strong); }
+.create-card-glyph { width: 44px; height: 44px; flex: 0 0 auto; }
+.create-card-body { flex: 1; }
+.create-card-title { font-size: 18px; font-weight: 900; letter-spacing: -0.01em; margin-bottom: 4px; }
+.create-card-desc  { color: var(--subtext); font-weight: 600; font-size: 13px; line-height: 1.4; }
+.create-card-cta   { color: var(--accent-2); font-weight: 900; margin-top: 10px; letter-spacing: 0.02em; }
+
+/* Type badge on history rows. */
+.type-badge {
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  white-space: nowrap;
+  margin-right: 4px;
+}
+.type-badge-bug  { color: #ffb14a; background: rgba(255, 178, 74, 0.10); border-color: rgba(255, 178, 74, 0.32); }
+.type-badge-idea { color: #ffd23a; background: rgba(255, 210, 58, 0.10); border-color: rgba(255, 210, 58, 0.32); }
+
 /* Delivery-state banner + inline resend chip on failed history rows. */
 .delivery-banner {
   display: flex;

@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Submit an Idea · Vox Bugs</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body data-page="create-idea">
+    <div id="tg-safe-top" aria-hidden="true"></div>
+    <main id="app">
+      <header class="hdr">
+        <h1 class="page-title">Submit an Idea</h1>
+        <p class="sub">Tell us the feature you'd love to see.</p>
+      </header>
+
+      <form id="idea-form" novalidate>
+        <section class="card">
+          <h2>App</h2>
+          <label>App <span class="req">*</span>
+            <select name="app" required id="idea-app-select">
+              <option value="">Choose an app…</option>
+            </select>
+          </label>
+        </section>
+
+        <section class="card">
+          <h2>Idea</h2>
+          <label>Idea title <span class="req">*</span>
+            <input name="title" required maxlength="200" placeholder="One line describing your idea" />
+          </label>
+          <label>What I Want <span class="req">*</span>
+            <textarea name="what_i_want" required rows="4" placeholder="Describe the feature you'd like."></textarea>
+          </label>
+          <label>Why It Would Be Useful
+            <textarea name="why_useful" rows="3" placeholder="Who benefits and how?"></textarea>
+          </label>
+          <label>How It Should Work
+            <textarea name="how_it_works" rows="4" placeholder="Roughly how you'd expect it to behave."></textarea>
+          </label>
+          <label>Where It Belongs in the App
+            <textarea name="where_it_belongs" rows="3" placeholder="Which screen, section, or flow?"></textarea>
+          </label>
+          <label>Extra Notes
+            <textarea name="notes" rows="3" placeholder="Anything else worth mentioning."></textarea>
+          </label>
+        </section>
+
+        <section class="card">
+          <h2>Reference</h2>
+          <p class="hint">A screenshot, mockup, or file (optional). Up to 10, 20 MB each.</p>
+          <label class="filepick">
+            <input type="file" id="idea-file-input" multiple
+                   accept="image/*,video/*,.pdf,.txt,.log,.json,.zip" />
+            <span>+ Add files</span>
+          </label>
+          <ul id="idea-file-list" class="files"></ul>
+        </section>
+
+        <button type="submit" id="idea-submit-btn" class="primary">Submit idea</button>
+      </form>
+
+      <div id="idea-success" class="success hidden">
+        <div class="check">
+          <svg viewBox="0 0 24 24" width="34" height="34" aria-hidden="true">
+            <path d="M5 12.5l4.5 4.5L20 6" fill="none" stroke="currentColor"
+              stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <p class="success-kicker">IDEA RECEIVED</p>
+        <h2 class="page-title">Idea submitted</h2>
+        <p class="success-copy">Your idea was saved as <b id="idea-success-id"></b>.</p>
+        <ul id="idea-success-destinations" class="destinations"></ul>
+        <p class="success-note">You'll get updates in Telegram when it's accepted, rejected, or shipped.</p>
+        <div class="success-actions">
+          <a class="primary nav-link" href="./create-idea.html">Submit another</a>
+          <a class="ghost nav-link" href="./history.html">View my submissions</a>
+          <a class="success-home-link" href="./index.html">Back to home</a>
+        </div>
+      </div>
+    </main>
+
+    <nav id="nav" aria-label="Primary">
+      <a class="nav-btn" href="./index.html" aria-label="Home">
+        <img class="nav-glyph" src="/icons/home.svg" alt="" />
+        <span class="nav-label">Home</span>
+      </a>
+      <a class="nav-btn active" href="./create.html" aria-label="Create" aria-current="page">
+        <img class="nav-glyph" src="/icons/create.svg" alt="" />
+        <span class="nav-label">Create</span>
+      </a>
+      <a class="nav-btn" href="./history.html" aria-label="History">
+        <img class="nav-glyph" src="/icons/clockbook.svg" alt="" />
+        <span class="nav-label">History</span>
+      </a>
+    </nav>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

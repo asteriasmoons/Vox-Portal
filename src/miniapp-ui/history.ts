@@ -74,29 +74,51 @@ export async function loadHistory(): Promise<void> {
   detail.classList.add("hidden");
   list.innerHTML = "";
 
-  let data: { ok: boolean; bugs?: BugSummary[] } = { ok: false };
+  interface Submission {
+    type: "bug" | "idea";
+    id: number;
+    public_id: string;
+    title: string;
+    app?: string;
+    status: string;
+    created_at: number;
+    telegram_posted?: boolean;
+    report_posted?: boolean;
+    github_created?: boolean;
+    github_url?: string | null;
+  }
+  let data: { ok: boolean; submissions?: Submission[]; bugs?: BugSummary[] } = { ok: false };
   try {
     const res = await fetch("/api/mybugs", { headers: authHeaders() });
-    data = await res.json() as { ok: boolean; bugs?: BugSummary[] };
+    data = await res.json() as { ok: boolean; submissions?: Submission[]; bugs?: BugSummary[] };
   } catch { /* empty state below */ }
 
   loading.classList.add("hidden");
-  const bugs = data.ok && data.bugs ? data.bugs : [];
-  if (!bugs.length) {
+  // Prefer the unified `submissions` feed; fall back to legacy `bugs` if
+  // the server is an older build.
+  const items: Submission[] = data.ok && data.submissions
+    ? data.submissions
+    : (data.bugs ?? []).map((b) => ({ ...b, type: "bug" as const }));
+  if (!items.length) {
     empty.classList.remove("hidden");
     return;
   }
-  for (const bug of bugs) list.appendChild(renderRow(bug));
+  for (const it of items) list.appendChild(renderRow(it as unknown as BugSummary & { type?: "bug" | "idea"; app?: string }));
   list.classList.remove("hidden");
 }
-function renderRow(bug: BugSummary): HTMLLIElement {
+function renderRow(bug: BugSummary & { type?: "bug" | "idea"; app?: string }): HTMLLIElement {
   const li = document.createElement("li");
-  li.className = "history-item";
+  const isIdea = bug.type === "idea";
+  li.className = `history-item${isIdea ? " history-item-idea" : ""}`;
   li.setAttribute("role", "button");
   li.tabIndex = 0;
 
   const row1 = document.createElement("div");
   row1.className = "row1";
+  // Type badge distinguishes bugs from ideas at a glance.
+  const typeBadge = document.createElement("span");
+  typeBadge.className = `type-badge type-badge-${isIdea ? "idea" : "bug"}`;
+  typeBadge.textContent = isIdea ? "💡 Idea" : "🐛 Bug";
   const pub = document.createElement("span");
   pub.className = "pubid";
   pub.textContent = bug.public_id;
@@ -105,7 +127,7 @@ function renderRow(bug: BugSummary): HTMLLIElement {
   pill.textContent = STATUS_LABEL[bug.status] ?? bug.status;
   pill.style.background = `${STATUS_COLOR[bug.status] ?? "#7a7a85"}22`;
   pill.style.color = STATUS_COLOR[bug.status] ?? "#c0c0c8";
-  row1.append(pub, pill);
+  row1.append(typeBadge, pub, pill);
 
   const title = document.createElement("div");
   title.className = "title";

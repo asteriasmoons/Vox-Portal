@@ -80,8 +80,14 @@ async function takeEphemeral(env: Env, bugId: number, tgId: number): Promise<num
 // ── Router ─────────────────────────────────────────────
 // Recognizes the `rich:*` grammar (new) and also the older `menu:*` / `act:*`
 // callbacks emitted by the pre-10.3 keyboard so nothing breaks in flight.
+// `idea:*` handles Feature Idea management taps.
 export async function handleAdminCallback(ctx: CallbackCtx): Promise<boolean> {
   const { env, data, fromTgId, callbackQueryId, chatId, messageId } = ctx;
+
+  // Feature Idea callbacks — separate grammar, separate handler.
+  if (data.startsWith("idea:")) {
+    return await handleIdeaCallback(ctx);
+  }
 
   if (data === "noop") {
     // Disabled current-selection buttons emit this. Give the tapper a hint.
@@ -263,6 +269,84 @@ async function dismissPicker(env: Env, chatId: number, bugId: number, tgId: numb
   }
 }
 
+// ── Idea callback handler ─────────────────────────────
+// Grammar: idea:act:<ideaId>:status:<statusId>
+//          idea:back:<ideaId>   (dismiss any picker)
+// Accept/Reject transitions record a pending-reason prompt in KV. The
+// admin then types `/reason <text>` in the same thread to attach the
+// decision reason; the reason is saved to the idea row and mirrored into
+// GitHub + Rich Message.
+async function handleIdeaCallback(ctx: CallbackCtx): Promise<boolean> {
+  const { env, data, fromTgId, callbackQueryId, chatId, messageId } = ctx;
+  if (!isAdmin(env, fromTgId)) {
+    await answerCallbackQuery(env, callbackQueryId, "Not authorized.", true);
+    return true;
+  }
+  const parts = data.split(":");
+  const ideaId = Number(parts[2]);
+  if (!Number.isFinite(ideaId)) return false;
+
+  if (data.startsWith("idea:back:")) {
+    await answerCallbackQuery(env, callbackQueryId);
+    return true;
+  }
+
+  // idea:act:<ideaId>:<verb>:<value>
+  const verb = parts[3];
+  const value = parts[4];
+  if (verb !== "status") {
+    await answerCallbackQuery(env, callbackQueryId, "Unknown idea action.", true);
+    return true;
+  }
+  const { IDEA_STATUS_IDS, ideaStatusMeta } = await import("../ideas/constants");
+  if (!(IDEA_STATUS_IDS as readonly string[]).includes(value)) {
+    await answerCallbackQuery(env, callbackQueryId, "Unknown status.", true);
+    return true;
+  }
+  const { changeIdeaStatus } = await import("../ideas/service");
+  const updated = await changeIdeaStatus(env, ideaId, value as any, fromTgId, null);
+  if (!updated) {
+    await answerCallbackQuery(env, callbackQueryId, "Idea not found.", true);
+    return true;
+  }
+
+  // Accept / Reject need a reason. Park a pending-reason key so the next
+  // `/reason <text>` from this admin in this thread attaches to this idea.
+  if (value === "accepted" || value === "rejected") {
+    await env.SESSIONS.put(
+      `idea_reason_pending:${updated.discussion_thread_id ?? 0}:${fromTgId}`,
+      String(ideaId),
+      { expirationTtl: 60 * 30 },
+    );
+    await answerCallbackQuery(
+      env, callbackQueryId,
+      `Idea marked ${value}. Type /reason <text> in this thread to record why.`,
+      true,
+    );
+  } else {
+    await answerCallbackQuery(env, callbackQueryId, `Idea → ${ideaStatusMeta(value).label}`);
+  }
+
+  // GitHub Discussions sync — post a follow-up comment reflecting the change.
+  void syncIdeaStatusToGitHub(env, updated, value).catch((e) =>
+    log.warn("idea_github_status_sync_failed", { ideaId, err: String(e) }));
+
+  return true;
+}
+
+async function syncIdeaStatusToGitHub(env: Env, idea: import("../db/types").IdeaRow, toStatus: string): Promise<void> {
+  if (!idea.github_discussion_id) return;
+  const { resolveIdeaDiscussion, ideaStatusMeta } = await import("../ideas/constants");
+  const target = resolveIdeaDiscussion(idea.app);
+  if (!target) return;
+  const { addDiscussionComment } = await import("../github/discussions");
+  const st = ideaStatusMeta(toStatus);
+  const body = `### Idea status: ${st.emoji} ${st.label}\n\n${
+    idea.decision_reason ? `${idea.decision_reason}\n\n` : ""
+  }_Updated through the Voxiverse Telegram Mini App._`;
+  await addDiscussionComment(env, target, body);
+}
+
 // ── Admin commands typed inside a bug's discussion thread ─
 // /note <text>, /fixed <ver> [build], /dup BUG-####
 // The note flow also comments on GitHub.
@@ -280,14 +364,18 @@ export async function handleAdminGroupCommand(
   if (!msg.from || !isAdmin(env, msg.from.id)) return false;
   if (!msg.message_thread_id) return false;
 
+  const spaceIdx = text.indexOf(" ");
+  const cmd = (spaceIdx === -1 ? text.slice(1) : text.slice(1, spaceIdx)).toLowerCase();
+  const args = spaceIdx === -1 ? "" : text.slice(spaceIdx + 1).trim();
+
+  // /reason is an idea-flow command; it doesn't need a matching bug row.
+  // Handle it before the bug lookup so it works in idea threads too.
+  if (cmd === "reason") return await handleReasonCommand(env, msg, args);
+
   const row = await env.DB.prepare(`SELECT * FROM bugs WHERE discussion_thread_id = ? LIMIT 1`)
     .bind(msg.message_thread_id)
     .first<BugRow>();
   if (!row) return false;
-
-  const spaceIdx = text.indexOf(" ");
-  const cmd = (spaceIdx === -1 ? text.slice(1) : text.slice(1, spaceIdx)).toLowerCase();
-  const args = spaceIdx === -1 ? "" : text.slice(spaceIdx + 1).trim();
 
   switch (cmd) {
     case "note": {
@@ -340,6 +428,51 @@ export async function handleAdminGroupCommand(
     default:
       return false;
   }
+}
+
+// /reason <text> — attaches a decision reason to the idea most recently
+// Accept/Reject'd by this admin in this thread. Idea-flow command; does
+// not require a bugs row to exist for the thread.
+async function handleReasonCommand(
+  env: Env,
+  msg: {
+    chat: { id: number };
+    from?: { id: number; username?: string; first_name?: string };
+    message_thread_id?: number;
+    text?: string;
+  },
+  args: string,
+): Promise<boolean> {
+  if (!args || !msg.from || !msg.message_thread_id) return true;
+  const key = `idea_reason_pending:${msg.message_thread_id}:${msg.from.id}`;
+  const ideaIdRaw = await env.SESSIONS.get(key);
+  if (!ideaIdRaw) return true;
+  await env.SESSIONS.delete(key);
+  const ideaId = Number(ideaIdRaw);
+  const { getIdea } = await import("../db/queries");
+  const idea = await getIdea(env, ideaId);
+  if (!idea) return true;
+
+  await env.DB.prepare(`UPDATE ideas SET decision_reason = ?, updated_at = ? WHERE id = ?`)
+    .bind(args, Math.floor(Date.now() / 1000), ideaId)
+    .run();
+
+  const fresh = await getIdea(env, ideaId);
+  if (!fresh) return true;
+  const { refreshIdeaRichReport } = await import("../ideas/service");
+  await refreshIdeaRichReport(env, fresh);
+
+  if (fresh.github_discussion_id) {
+    const { resolveIdeaDiscussion } = await import("../ideas/constants");
+    const target = resolveIdeaDiscussion(fresh.app);
+    if (target) {
+      const { addDiscussionComment } = await import("../github/discussions");
+      const label = fresh.status === "accepted" ? "Accepted" : fresh.status === "rejected" ? "Rejected" : "Update";
+      await addDiscussionComment(env, target,
+        `### ${label} — Reason\n\n${args}\n\n_Updated through the Voxiverse Telegram Mini App._`);
+    }
+  }
+  return true;
 }
 
 // Prevent unused-import warnings.

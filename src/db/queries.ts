@@ -269,6 +269,157 @@ export async function saveGitHubMeta(env: Env, bugId: number, patch: GitHubMetaP
     .run();
 }
 
+// ── Feature Ideas ───────────────────────────────────────
+import type { IdeaRow, IdeaAttachmentRow, NewIdeaInput } from "./types";
+
+export async function nextIdeaNumber(env: Env): Promise<number> {
+  const row = await env.DB.prepare(
+    `UPDATE sequences SET value = value + 1 WHERE name = 'idea' RETURNING value AS n`,
+  ).first<{ n: number }>();
+  if (!row) throw new Error("sequences.idea missing — run migrations/003_ideas.sql");
+  return row.n;
+}
+
+export async function insertIdea(env: Env, input: NewIdeaInput, publicNumber: number): Promise<IdeaRow> {
+  const now = Math.floor(Date.now() / 1000);
+  const row = await env.DB.prepare(
+    `INSERT INTO ideas (
+       public_number, reporter_tg_id, reporter_username, reporter_display_name,
+       app, title, what_i_want, why_useful, how_it_works, where_it_belongs, notes,
+       status, created_at, updated_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?)
+     RETURNING *`,
+  )
+    .bind(
+      publicNumber,
+      input.reporter_tg_id,
+      input.reporter_username ?? null,
+      input.reporter_display_name ?? null,
+      input.app,
+      input.title,
+      input.what_i_want,
+      input.why_useful ?? null,
+      input.how_it_works ?? null,
+      input.where_it_belongs ?? null,
+      input.notes ?? null,
+      now,
+      now,
+    )
+    .first<IdeaRow>();
+  if (!row) throw new Error("insertIdea: no row");
+  return row;
+}
+
+export async function getIdea(env: Env, id: number): Promise<IdeaRow | null> {
+  return await env.DB.prepare(`SELECT * FROM ideas WHERE id = ?`).bind(id).first<IdeaRow>();
+}
+
+export async function listIdeasByReporter(env: Env, tgUserId: number, limit = 50): Promise<IdeaRow[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT * FROM ideas WHERE reporter_tg_id = ? ORDER BY id DESC LIMIT ?`,
+  )
+    .bind(tgUserId, limit)
+    .all<IdeaRow>();
+  return results ?? [];
+}
+
+export async function setIdeaTelegramLinkage(
+  env: Env,
+  ideaId: number,
+  channelMessageId: number,
+  discussionMessageId: number | null,
+  discussionThreadId: number | null,
+): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE ideas SET channel_message_id=?, discussion_message_id=?, discussion_thread_id=?, updated_at=? WHERE id=?`,
+  )
+    .bind(channelMessageId, discussionMessageId, discussionThreadId, Math.floor(Date.now() / 1000), ideaId)
+    .run();
+}
+
+export async function setIdeaReportMessageId(env: Env, ideaId: number, messageId: number): Promise<void> {
+  await env.DB.prepare(`UPDATE ideas SET report_message_id=?, updated_at=? WHERE id=?`)
+    .bind(messageId, Math.floor(Date.now() / 1000), ideaId)
+    .run();
+}
+
+export interface IdeaGitHubPatch {
+  github_repo?: string | null;
+  github_discussion_id?: string | null;
+  github_discussion_url?: string | null;
+  github_comment_id?: string | null;
+  github_comment_url?: string | null;
+  github_status?: string | null;
+  github_error?: string | null;
+  github_created_at?: number | null;
+}
+
+export async function saveIdeaGitHubMeta(env: Env, ideaId: number, patch: IdeaGitHubPatch): Promise<void> {
+  const cols: string[] = [];
+  const vals: (string | number | null)[] = [];
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === undefined) continue;
+    cols.push(`${k} = ?`);
+    vals.push(v as string | number | null);
+  }
+  if (!cols.length) return;
+  cols.push(`updated_at = ?`);
+  vals.push(Math.floor(Date.now() / 1000));
+  vals.push(ideaId);
+  await env.DB.prepare(`UPDATE ideas SET ${cols.join(", ")} WHERE id = ?`).bind(...vals).run();
+}
+
+export async function updateIdeaStatus(
+  env: Env,
+  ideaId: number,
+  toStatus: string,
+  changedBy: number | null,
+  reason: string | null,
+): Promise<{ from: string; to: string } | null> {
+  const cur = await getIdea(env, ideaId);
+  if (!cur) return null;
+  const from = cur.status;
+  const now = Math.floor(Date.now() / 1000);
+  await env.DB.batch([
+    env.DB.prepare(`UPDATE ideas SET status=?, decision_reason=COALESCE(?, decision_reason), updated_at=? WHERE id=?`)
+      .bind(toStatus, reason, now, ideaId),
+    env.DB.prepare(
+      `INSERT INTO idea_status_history (idea_id, from_status, to_status, changed_by, note, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).bind(ideaId, from, toStatus, changedBy, reason, now),
+  ]);
+  return { from, to: toStatus };
+}
+
+export async function insertIdeaAttachment(env: Env, a: {
+  idea_id: number; kind: IdeaAttachmentRow["kind"]; telegram_file_id?: string | null;
+  r2_key?: string | null; mime_type?: string | null; file_name?: string | null;
+  size_bytes?: number | null; width?: number | null; height?: number | null;
+}): Promise<IdeaAttachmentRow> {
+  const row = await env.DB.prepare(
+    `INSERT INTO idea_attachments (idea_id, kind, telegram_file_id, r2_key, mime_type, file_name, size_bytes, width, height)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
+  ).bind(
+    a.idea_id, a.kind, a.telegram_file_id ?? null, a.r2_key ?? null,
+    a.mime_type ?? null, a.file_name ?? null, a.size_bytes ?? null,
+    a.width ?? null, a.height ?? null,
+  ).first<IdeaAttachmentRow>();
+  if (!row) throw new Error("insertIdeaAttachment: no row");
+  return row;
+}
+
+export async function listIdeaAttachments(env: Env, ideaId: number): Promise<IdeaAttachmentRow[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT * FROM idea_attachments WHERE idea_id=? ORDER BY id ASC`,
+  ).bind(ideaId).all<IdeaAttachmentRow>();
+  return results ?? [];
+}
+
+export async function setIdeaAttachmentPostedMessage(env: Env, id: number, messageId: number): Promise<void> {
+  await env.DB.prepare(`UPDATE idea_attachments SET posted_message_id=? WHERE id=?`)
+    .bind(messageId, id).run();
+}
+
 // ── Update idempotency ──────────────────────────────────────
 // Returns true if this update_id was NOT yet processed (and marks it as processed).
 export async function claimUpdateId(env: Env, updateId: number): Promise<boolean> {

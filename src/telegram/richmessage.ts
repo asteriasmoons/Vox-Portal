@@ -266,6 +266,118 @@ export function buildCategoryPickerRichMessage(bug: BugRow): { blocks: unknown[]
   return { blocks: [...blocks, ...rows] };
 }
 
+// ── Feature Idea Rich Message ─────────────────────────
+// Deliberately DIFFERENT layout from bug reports so ideas and bugs are
+// visually distinct in the same discussion group.
+import type { IdeaRow } from "../db/types";
+import { IDEA_STATUSES, ideaStatusMeta } from "../ideas/constants";
+import { ideaPublicId } from "../ideas/formatting";
+
+export function buildIdeaReportRichMessage(idea: IdeaRow): { blocks: unknown[] } {
+  const blocks: unknown[] = [];
+  const st = ideaStatusMeta(idea.status);
+
+  blocks.push(heading(`💡 IDEA — ${ideaPublicId(idea)}`, 2));
+  blocks.push(paragraph(idea.title));
+
+  blocks.push(kvTable([
+    ["App",    idea.app],
+    ["Status", `${st.emoji} ${st.label}`],
+  ]));
+
+  blocks.push(divider());
+
+  const sec = (h: string, v: string | null | undefined) => {
+    if (!v || !v.trim()) return;
+    blocks.push(heading(h, 4));
+    blocks.push(paragraph(v));
+  };
+  sec("What I Want", idea.what_i_want);
+  sec("Why It Would Be Useful", idea.why_useful);
+  sec("How It Should Work", idea.how_it_works);
+  sec("Where It Belongs", idea.where_it_belongs);
+  sec("Extra Notes", idea.notes);
+
+  if (idea.decision_reason && (idea.status === "accepted" || idea.status === "rejected")) {
+    blocks.push(heading(idea.status === "accepted" ? "Accepted — Reason" : "Rejected — Reason", 4));
+    blocks.push(paragraph(idea.decision_reason));
+  }
+
+  const reporter = idea.reporter_username
+    ? `@${idea.reporter_username}`
+    : idea.reporter_display_name || "anonymous";
+  blocks.push(heading("Reporter", 4));
+  blocks.push(paragraph(`${reporter} · submitted ${formatIdeaTs(idea.created_at)}`));
+
+  if (idea.github_comment_url) {
+    blocks.push(divider());
+    blocks.push(paragraph(`GitHub Discussion comment: ${idea.github_comment_url}`));
+  }
+
+  blocks.push(divider());
+  for (const row of ideaManagementButtonBlocks(idea)) blocks.push(row);
+  return { blocks };
+}
+
+function formatIdeaTs(unixSec: number): string {
+  const d = new Date(unixSec * 1000);
+  return d.toLocaleString("en-US", {
+    year: "numeric", month: "long", day: "numeric",
+    hour: "numeric", minute: "2-digit", hour12: true, timeZone: "UTC",
+  }) + " UTC";
+}
+
+// Idea-specific button bar. Distinct from Bug controls: no severity/category.
+// Accept + Reject prompt for a reason via /reason command in the thread.
+export function ideaManagementButtonBlocks(idea: IdeaRow): unknown[] {
+  const id = idea.id;
+  const cb = (verb: string, extra = "") => `idea:${verb}:${id}${extra ? `:${extra}` : ""}`;
+  const isAccepted = idea.status === "accepted";
+  const isRejected = idea.status === "rejected";
+  const isInProgress = idea.status === "in_progress";
+  const isTesting  = idea.status === "in_testing";
+  const isShipped  = idea.status === "shipped";
+  const decided = isAccepted || isRejected || isInProgress || isTesting || isShipped;
+
+  const rows: unknown[] = [];
+
+  // View on GitHub (link button — no callback).
+  if (idea.github_comment_url) {
+    rows.push(buttonsRow([
+      { text: "🔗 View on GitHub", style: "link", url: idea.github_comment_url },
+    ]));
+  }
+
+  // Decision row.
+  rows.push(buttonsRow([
+    isAccepted
+      ? disabledButton("✓ Accepted", "success")
+      : { text: "✅ Accept", style: "success", callback_data: cb("act", "status:accepted") },
+    isRejected
+      ? disabledButton("✓ Rejected", "danger")
+      : { text: "❌ Reject", style: "danger", callback_data: cb("act", "status:rejected") },
+  ]));
+
+  // Implementation stages appear only once the idea has been accepted.
+  if (decided && !isRejected) {
+    rows.push(buttonsRow([
+      isInProgress
+        ? disabledButton("✓ In Progress")
+        : { text: "🔵 In Progress", style: "primary", callback_data: cb("act", "status:in_progress") },
+      isTesting
+        ? disabledButton("✓ In Testing")
+        : { text: "🟣 In Testing", style: "primary", callback_data: cb("act", "status:in_testing") },
+    ]));
+    rows.push(buttonsRow([
+      isShipped
+        ? disabledButton("✓ Shipped", "success")
+        : { text: "🚢 Mark Shipped", style: "success", callback_data: cb("act", "status:shipped") },
+    ]));
+  }
+
+  return rows;
+}
+
 // Prompt used when the admin taps "Add Note". Shown as an ephemeral message
 // telling them to reply to the report with /note <text>.
 export function buildNotePromptRichMessage(bug: BugRow): { blocks: unknown[] } {

@@ -5,6 +5,9 @@
 import type { Env } from "../config";
 import { validateInitData } from "../telegram/initdata";
 import { createBug, resendBugToTelegram, type IncomingAttachment } from "../bugs/service";
+import { createIdea, type IncomingIdeaAttachment } from "../ideas/service";
+import { listIdeasByReporter } from "../db/queries";
+import { ideaPublicId } from "../ideas/formatting";
 import { postChannelTicket, postReportToThread, postR2AttachmentToThread, postTelegramAttachmentToThread, waitForDiscussionMirror } from "../telegram/channel";
 import { APPS, CATEGORIES, SEVERITIES, FREQUENCIES, CATEGORY_IDS, SEVERITY_IDS } from "../bugs/constants";
 import { listBugsByReporter, getBug, listAttachments, setAttachmentPostedMessage, setBugTelegramLinkage } from "../db/queries";
@@ -168,6 +171,97 @@ export async function handleSubmit(env: Env, req: Request): Promise<Response> {
   }
 }
 
+// POST /api/submit-idea — creates a Feature Idea (Telegram + GitHub Discussion).
+export async function handleSubmitIdea(env: Env, req: Request): Promise<Response> {
+  const initData = req.headers.get("x-telegram-init-data") ?? "";
+  let user;
+  try {
+    ({ user } = await validateInitData(env, initData));
+  } catch { return json({ ok: false, error: "auth" }, { status: 401 }); }
+
+  let payload: IdeaSubmitPayload;
+  try { payload = (await req.json()) as IdeaSubmitPayload; }
+  catch { return badRequest("invalid JSON"); }
+
+  const errs = validateIdeaPayload(payload);
+  if (errs.length) return badRequest(errs.join("; "));
+
+  // Materialize R2 attachments back to bytes.
+  const attachments: IncomingIdeaAttachment[] = [];
+  for (const a of payload.attachments ?? []) {
+    if (attachments.length >= MAX_ATTACHMENTS) break;
+    const obj = await env.ATTACHMENTS.get(a.key);
+    if (!obj) continue;
+    const bytes = await obj.arrayBuffer();
+    if (bytes.byteLength > MAX_ATTACHMENT_BYTES) continue;
+    attachments.push({
+      source: "r2",
+      kind: kindOf(a.mime),
+      r2_key: a.key,
+      bytes,
+      mime: a.mime || obj.httpMetadata?.contentType || "application/octet-stream",
+      file_name: a.name || "attachment",
+      size_bytes: bytes.byteLength,
+    });
+  }
+
+  try {
+    const outcome = await createIdea(
+      env,
+      {
+        reporter_tg_id: user.id,
+        reporter_username: user.username ?? null,
+        reporter_display_name: [user.first_name, user.last_name].filter(Boolean).join(" ") || null,
+        app: payload.app.trim(),
+        title: payload.title.trim(),
+        what_i_want: payload.what_i_want.trim(),
+        why_useful: nz(payload.why_useful),
+        how_it_works: nz(payload.how_it_works),
+        where_it_belongs: nz(payload.where_it_belongs),
+        notes: nz(payload.notes),
+      },
+      attachments,
+    );
+    return json({
+      ok: true,
+      public_id: ideaPublicId(outcome.row),
+      id: outcome.row.id,
+      telegram: { status: outcome.telegram },
+      github: outcome.github,
+    });
+  } catch (e) {
+    log.error("miniapp_submit_idea_failed", e, { user_id: user.id });
+    return json({ ok: false, error: "server" }, { status: 500 });
+  }
+}
+
+interface IdeaSubmitPayload {
+  app: string;
+  title: string;
+  what_i_want: string;
+  why_useful?: string;
+  how_it_works?: string;
+  where_it_belongs?: string;
+  notes?: string;
+  attachments?: { key: string; name: string; mime: string; size?: number }[];
+  submit_token?: string;
+}
+
+function validateIdeaPayload(p: IdeaSubmitPayload): string[] {
+  const errs: string[] = [];
+  if (!p || typeof p !== "object") return ["invalid body"];
+  if (!p.app?.trim()) errs.push("app is required");
+  if (!p.title?.trim()) errs.push("title is required");
+  if (!p.what_i_want?.trim()) errs.push("what_i_want is required");
+  if (p.title && p.title.length > MAX_TITLE_LEN) errs.push("title too long");
+  for (const k of ["what_i_want", "why_useful", "how_it_works", "where_it_belongs", "notes"] as const) {
+    const v = p[k];
+    if (v && v.length > MAX_TEXT_LEN) errs.push(`${k} too long`);
+  }
+  if ((p.attachments?.length ?? 0) > MAX_ATTACHMENTS) errs.push("too many attachments");
+  return errs;
+}
+
 // GET /api/mybugs — list this user's own bugs (for a future dashboard view).
 export async function handleMyBugs(env: Env, req: Request): Promise<Response> {
   const initData = req.headers.get("x-telegram-init-data") ?? "";
@@ -177,10 +271,43 @@ export async function handleMyBugs(env: Env, req: Request): Promise<Response> {
   } catch {
     return json({ ok: false, error: "auth" }, { status: 401 });
   }
-  const rows = await listBugsByReporter(env, user.id, 50);
+  const [bugRows, ideaRows] = await Promise.all([
+    listBugsByReporter(env, user.id, 50),
+    listIdeasByReporter(env, user.id, 50),
+  ]);
   return json({
     ok: true,
-    bugs: rows.map((r) => ({
+    // Unified feed: bugs + ideas, most-recent first. Frontend keys on `type`.
+    submissions: [
+      ...bugRows.map((r) => ({
+        type: "bug" as const,
+        id: r.id,
+        public_id: `BUG-${String(r.public_number).padStart(4, "0")}`,
+        title: r.title,
+        app: r.app,
+        status: r.status,
+        created_at: r.created_at,
+        telegram_posted: !!r.channel_message_id,
+        report_posted: !!r.report_message_id,
+        github_created: !!r.github_issue_number,
+        github_url: r.github_issue_url,
+      })),
+      ...ideaRows.map((r) => ({
+        type: "idea" as const,
+        id: r.id,
+        public_id: ideaPublicId(r),
+        title: r.title,
+        app: r.app,
+        status: r.status,
+        created_at: r.created_at,
+        telegram_posted: !!r.channel_message_id,
+        report_posted: !!r.report_message_id,
+        github_created: !!r.github_comment_id,
+        github_url: r.github_comment_url,
+      })),
+    ].sort((a, b) => b.created_at - a.created_at),
+    // Legacy shape kept for backward compat with any older cached JS.
+    bugs: bugRows.map((r) => ({
       id: r.id,
       public_id: publicIdOf(r),
       title: r.title,

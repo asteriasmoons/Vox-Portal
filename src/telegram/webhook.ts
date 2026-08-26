@@ -134,7 +134,8 @@ async function onCallbackQuery(env: Env, cq: NonNullable<Update["callback_query"
     data === "noop" ||
     data.startsWith("rich:") ||
     data.startsWith("menu:") ||
-    data.startsWith("act:");
+    data.startsWith("act:") ||
+    data.startsWith("idea:");
   if (isAdminCallback && cq.message?.chat.id === discussionChatId(env)) {
     await handleAdminCallback({
       env,

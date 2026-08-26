@@ -39,6 +39,66 @@ export interface BugRow {
   updated_at: number;
 }
 
+// ── Feature Ideas ───────────────────────────────────────
+export interface IdeaRow {
+  id: number;
+  public_number: number;
+  reporter_tg_id: number;
+  reporter_username: string | null;
+  reporter_display_name: string | null;
+  app: string;
+  title: string;
+  what_i_want: string;
+  why_useful: string | null;
+  how_it_works: string | null;
+  where_it_belongs: string | null;
+  notes: string | null;
+  status: string;
+  decision_reason: string | null;
+  channel_message_id: number | null;
+  discussion_message_id: number | null;
+  discussion_thread_id: number | null;
+  report_message_id: number | null;
+  github_repo: string | null;
+  github_discussion_id: string | null;
+  github_discussion_url: string | null;
+  github_comment_id: string | null;
+  github_comment_url: string | null;
+  github_status: string | null;
+  github_error: string | null;
+  github_created_at: number | null;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface IdeaAttachmentRow {
+  id: number;
+  idea_id: number;
+  kind: "photo" | "video" | "document" | "animation";
+  telegram_file_id: string | null;
+  r2_key: string | null;
+  mime_type: string | null;
+  file_name: string | null;
+  size_bytes: number | null;
+  width: number | null;
+  height: number | null;
+  posted_message_id: number | null;
+  created_at: number;
+}
+
+export interface NewIdeaInput {
+  reporter_tg_id: number;
+  reporter_username?: string | null;
+  reporter_display_name?: string | null;
+  app: string;
+  title: string;
+  what_i_want: string;
+  why_useful?: string | null;
+  how_it_works?: string | null;
+  where_it_belongs?: string | null;
+  notes?: string | null;
+}
+
 export interface AttachmentRow {
   id: number;
   bug_id: number;
