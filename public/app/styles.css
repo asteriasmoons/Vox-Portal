@@ -3,21 +3,22 @@
    own chips at the top don't overlap us. */
 
 :root {
-  /* Palette — sunset gradient over black. */
-  --bg:            #060505;
-  --bg-elev:       #14100c;
-  --card:          #1a1410;
-  --text:          #fdf6ec;
-  --subtext:       #b8ab9a;
-  --hint:          #8f8474;
-  --link:          #ffb14a;
-  --accent:        #ff8a2b;   /* orange */
-  --accent-2:      #ffd23a;   /* yellow */
-  --accent-text:   #1a0e00;
+  /* Palette — deep purple/plum gradient over near-black.
+     Base colors: #624693 (indigo purple), #5a2e50 (deep plum), #0a0a0a (black). */
+  --bg:            #0a0a0a;
+  --bg-elev:       #14101a;
+  --card:          #171122;
+  --text:          #f2eef9;
+  --subtext:       #a89ec1;
+  --hint:          #7f7595;
+  --link:          #a58ad9;
+  --accent:        #624693;   /* indigo purple */
+  --accent-2:      #5a2e50;   /* deep plum */
+  --accent-text:   #ffffff;
   --danger:        #ff5c73;
   --success:       #77e08c;
-  --border:        rgba(255, 200, 120, 0.10);
-  --border-strong: rgba(255, 200, 120, 0.20);
+  --border:        rgba(200, 180, 240, 0.10);
+  --border-strong: rgba(200, 180, 240, 0.20);
   --radius:        16px;
   --radius-lg:     20px;
 
@@ -33,14 +34,14 @@
   --nav-height:  76px;
 
   /* Gradient tokens — reused for background, buttons, and active nav.
-     Yellow at the top-right, orange fading through the middle, black
-     everywhere else. Radials so we don't get harsh banding. */
+     Indigo purple pooling top-right, deep plum bottom-left, black
+     everywhere else. Radials avoid harsh banding. */
   --grad-bg:
-    radial-gradient(1100px 780px at 90% -10%, rgba(255, 210, 58, 0.22), transparent 60%),
-    radial-gradient(900px 700px at 10% 110%, rgba(255, 138, 43, 0.20), transparent 55%),
-    linear-gradient(180deg, #0a0705 0%, #050403 100%);
-  --grad-button: linear-gradient(135deg, var(--accent-2) 0%, var(--accent) 55%, #ff5a1f 100%);
-  --grad-active: linear-gradient(135deg, var(--accent-2), var(--accent));
+    radial-gradient(1100px 780px at 90% -10%, rgba(98, 70, 147, 0.35), transparent 60%),
+    radial-gradient(900px 700px at 10% 110%, rgba(90, 46, 80, 0.32), transparent 55%),
+    linear-gradient(180deg, #0a0a0a 0%, #050505 100%);
+  --grad-button: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
+  --grad-active: linear-gradient(135deg, #8064c9, var(--accent) 55%, var(--accent-2));
 }
 
 * { box-sizing: border-box; }
@@ -216,7 +217,7 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); backgro
 .primary {
   background: var(--grad-button);
   color: var(--accent-text);
-  box-shadow: 0 10px 24px -10px rgba(255, 138, 43, 0.55);
+  box-shadow: 0 10px 24px -10px rgba(98, 70, 147, 0.6);
 }
 .primary:active { transform: translateY(1px); }
 .primary:disabled { opacity: 0.5; cursor: default; box-shadow: none; }
@@ -264,7 +265,7 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); backgro
   width: 20px; text-align: center; font-weight: 900;
 }
 .destinations .dest-ok    .dest-mark { color: var(--success); }
-.destinations .dest-warn  .dest-mark { color: #ffb14a; }
+.destinations .dest-warn  .dest-mark { color: #a58ad9; }
 .destinations .dest-muted .dest-mark { color: var(--subtext); }
 .destinations .dest-label { color: var(--text); text-decoration: none; }
 .destinations a.dest-label { text-decoration: underline; }
@@ -426,14 +427,16 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); backgro
   /* Recolor the monochrome SVG to match the badge's text color, per type. */
   filter: brightness(0) invert(1);
 }
-.type-badge-bug  { color: #ffb14a; background: rgba(255, 178, 74, 0.10); border-color: rgba(255, 178, 74, 0.32); }
-.type-badge-idea { color: #ffd23a; background: rgba(255, 210, 58, 0.10); border-color: rgba(255, 210, 58, 0.32); }
-/* Recolor icons to the same warm tone the badge text uses. */
+.type-badge-bug  { color: #a58ad9; background: rgba(98, 70, 147, 0.14); border-color: rgba(98, 70, 147, 0.40); }
+.type-badge-idea { color: #c99ac0; background: rgba(90, 46, 80, 0.18);  border-color: rgba(90, 46, 80, 0.45); }
+/* Recolor the monochrome icons to match each badge's text color. */
 .type-badge-bug  .type-badge-glyph {
-  filter: brightness(0) saturate(100%) invert(72%) sepia(66%) saturate(720%) hue-rotate(346deg) brightness(101%) contrast(101%);
+  /* Approximation of #a58ad9 via filter cascade — good enough for a 12px icon. */
+  filter: brightness(0) saturate(100%) invert(60%) sepia(20%) saturate(1600%) hue-rotate(220deg) brightness(105%) contrast(90%);
 }
 .type-badge-idea .type-badge-glyph {
-  filter: brightness(0) saturate(100%) invert(85%) sepia(59%) saturate(700%) hue-rotate(347deg) brightness(103%) contrast(101%);
+  /* Approximation of #c99ac0 (plum). */
+  filter: brightness(0) saturate(100%) invert(72%) sepia(15%) saturate(700%) hue-rotate(280deg) brightness(103%) contrast(95%);
 }
 
 /* Delivery-state banner + inline resend chip on failed history rows. */
@@ -444,14 +447,14 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); backgro
   gap: 10px;
   margin-top: 10px;
   padding: 8px 10px;
-  border: 1px solid rgba(255, 178, 74, 0.28);
-  background: rgba(255, 178, 74, 0.08);
+  border: 1px solid rgba(165, 138, 217, 0.32);
+  background: rgba(98, 70, 147, 0.12);
   border-radius: 10px;
 }
 .delivery-label {
   font-size: 12px;
   font-weight: 800;
-  color: #ffb14a;
+  color: #a58ad9;
   letter-spacing: 0.02em;
 }
 .resend-chip {
