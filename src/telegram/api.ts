@@ -167,6 +167,13 @@ export async function sendRichMessage(
     }
   } catch { /* noop */ }
 
+  console.log("sendRichMessage.out", JSON.stringify({
+    chat_id: chatId,
+    message_thread_id: opts.message_thread_id ?? null,
+    reply_parameters: opts.reply_parameters ?? null,
+    has_ephemeral: !!opts.ephemeral_message_parameters,
+  }));
+
   return await tgCall<TelegramMessage>(env, "sendRichMessage", {
     chat_id: chatId,
     rich_message: richMessage,
