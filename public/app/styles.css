@@ -41,7 +41,7 @@
     radial-gradient(900px 700px at 10% 110%, rgba(90, 46, 80, 0.32), transparent 55%),
     linear-gradient(180deg, #0a0a0a 0%, #050505 100%);
   --grad-button: linear-gradient(135deg, var(--accent) 0%, var(--accent-2) 100%);
-  --grad-active: linear-gradient(135deg, #8064c9, var(--accent) 55%, var(--accent-2));
+  --grad-active: linear-gradient(135deg, #624693 0%, #5a2e50 100%);
 }
 
 * { box-sizing: border-box; }
@@ -510,13 +510,24 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); backgro
   transition: color 120ms ease, transform 120ms ease;
 }
 .nav-btn:active { transform: scale(0.96); }
+/* Nav icon rendered as a CSS mask so its fill can be a real gradient,
+   not a single-color filter approximation. The <img> element still
+   ships in the HTML but its raw pixels are hidden — we paint the icon
+   via `background` masked to the SVG's shape. */
 .nav-btn .nav-glyph {
-  width: 26px; height: 26px;
-  object-fit: contain;
-  opacity: 0.7;
-  filter: brightness(0) invert(1);
-  transition: opacity 120ms ease, filter 120ms ease;
+  display: block;
+  width: 26px;
+  height: 26px;
+  background: var(--subtext);
+  -webkit-mask: var(--icon) center / contain no-repeat;
+          mask: var(--icon) center / contain no-repeat;
+  opacity: 0.85;
+  transition: background 120ms ease, opacity 120ms ease;
 }
+/* An <img> with mask still shows its own pixels behind the mask. Hide the
+   raw image content so only the mask-clipped background shows through. */
+img.nav-glyph { content: ""; }
+.nav-btn .nav-glyph { color: transparent; }
 .nav-btn .nav-label {
   font-size: 11px;
   letter-spacing: 0.06em;
@@ -533,11 +544,8 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); backgro
 }
 .nav-btn.active .nav-glyph {
   opacity: 1;
-  /* Recolor the monochrome nav icon to a light purple that matches the
-     active-label gradient — no more warm orange filter. */
-  filter:
-    brightness(0) saturate(100%)
-    invert(48%) sepia(28%) saturate(1700%) hue-rotate(220deg) brightness(95%) contrast(92%);
+  /* Real gradient inside the icon shape, using the exact colors given. */
+  background: var(--grad-active);
 }
 
 /* ── Submission success redesign ─────────────────────── */
