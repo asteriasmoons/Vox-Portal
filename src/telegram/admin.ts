@@ -356,13 +356,13 @@ export async function handleAdminGroupCommand(
     chat: { id: number };
     from?: { id: number; username?: string; first_name?: string };
     message_thread_id?: number;
+    reply_to_message?: import("./api").TelegramMessage;
     text?: string;
   },
 ): Promise<boolean> {
   const text = (msg.text ?? "").trim();
   if (!text.startsWith("/")) return false;
   if (!msg.from || !isAdmin(env, msg.from.id)) return false;
-  if (!msg.message_thread_id) return false;
 
   const spaceIdx = text.indexOf(" ");
   const rawCmd = spaceIdx === -1 ? text.slice(1) : text.slice(1, spaceIdx);
@@ -372,6 +372,11 @@ export async function handleAdminGroupCommand(
   // /reason is an idea-flow command; it doesn't need a matching bug row.
   // Handle it before the bug lookup so it works in idea threads too.
   if (cmd === "reason") return await handleReasonCommand(env, msg, args);
+
+  // The legacy bug admin commands below are forum-thread based and still
+  // require message_thread_id. /reason is resolved independently above so
+  // linked-channel discussion comments are supported too.
+  if (!msg.message_thread_id) return false;
 
   const row = await env.DB.prepare(`SELECT * FROM bugs WHERE discussion_thread_id = ? LIMIT 1`)
     .bind(msg.message_thread_id)
@@ -440,54 +445,79 @@ async function handleReasonCommand(
     chat: { id: number };
     from?: { id: number; username?: string; first_name?: string };
     message_thread_id?: number;
+    reply_to_message?: import("./api").TelegramMessage;
     text?: string;
   },
   args: string,
 ): Promise<boolean> {
-  if (!msg.from || !msg.message_thread_id) return true;
+  if (!msg.from) return true;
+
+  // Linked channel discussions do not reliably put message_thread_id on
+  // user-authored comments. Collect every plausible discussion/root id from
+  // both message_thread_id and Telegram's reply chain instead.
+  const candidateIds = new Set<number>();
+  if (msg.message_thread_id) candidateIds.add(msg.message_thread_id);
+  let reply = msg.reply_to_message;
+  for (let depth = 0; reply && depth < 8; depth++, reply = reply.reply_to_message) {
+    if (reply.message_id) candidateIds.add(reply.message_id);
+    if (reply.message_thread_id) candidateIds.add(reply.message_thread_id);
+  }
+
+  // Find the Idea represented by this exact linked discussion. Prefer the
+  // durable D1 linkage rather than depending on the short-lived KV prompt.
+  let ideaId: number | null = null;
+  let threadId: number | null = msg.message_thread_id ?? null;
+  for (const candidate of candidateIds) {
+    const matched = await env.DB.prepare(
+      `SELECT id, discussion_thread_id FROM ideas
+       WHERE discussion_thread_id = ? OR discussion_message_id = ?
+       ORDER BY id DESC LIMIT 1`,
+    ).bind(candidate, candidate).first<{ id: number; discussion_thread_id: number | null }>();
+    if (matched) {
+      ideaId = matched.id;
+      threadId = matched.discussion_thread_id ?? candidate;
+      break;
+    }
+  }
+
+  // KV is a fallback for Telegram update shapes where the reply root is not
+  // exposed. Check any candidate thread key, then the direct thread id.
+  if (ideaId == null) {
+    for (const candidate of candidateIds) {
+      const raw = await env.SESSIONS.get(`idea_reason_pending:${candidate}:${msg.from.id}`);
+      const n = raw ? Number(raw) : NaN;
+      if (Number.isFinite(n)) { ideaId = n; threadId = candidate; break; }
+    }
+  }
+
   if (!args) {
-    await sendMessage(env, msg.chat.id, "Usage: /reason <text>", {
-      message_thread_id: msg.message_thread_id,
-    });
+    await sendMessage(env, msg.chat.id, "Usage: /reason <text>", threadId ? { message_thread_id: threadId } : {});
     return true;
   }
 
-  const key = `idea_reason_pending:${msg.message_thread_id}:${msg.from.id}`;
-  const ideaIdRaw = await env.SESSIONS.get(key);
-
-  // Prefer the exact pending Accept/Reject action. If that short-lived KV key
-  // is gone, resolve the idea directly from this Telegram comment thread so
-  // /reason still works reliably after delays, deploys, or KV misses.
-  let ideaId = ideaIdRaw ? Number(ideaIdRaw) : NaN;
-  if (!Number.isFinite(ideaId)) {
-    const row = await env.DB.prepare(
-      `SELECT id FROM ideas WHERE discussion_thread_id = ? ORDER BY id DESC LIMIT 1`,
-    )
-      .bind(msg.message_thread_id)
-      .first<{ id: number }>();
-    ideaId = row?.id ?? NaN;
-  }
-
-  if (!Number.isFinite(ideaId)) {
-    await sendMessage(env, msg.chat.id, "I couldn't match this thread to an idea.", {
-      message_thread_id: msg.message_thread_id,
-    });
+  if (ideaId == null) {
+    await sendMessage(env, msg.chat.id, "I couldn't match this comment thread to an idea.",
+      msg.reply_to_message?.message_id
+        ? { reply_parameters: { message_id: msg.reply_to_message.message_id } }
+        : {});
     return true;
   }
 
   const { getIdea } = await import("../db/queries");
   const idea = await getIdea(env, ideaId);
-  if (!idea) {
-    await sendMessage(env, msg.chat.id, "I couldn't find that idea record.", {
-      message_thread_id: msg.message_thread_id,
-    });
-    return true;
-  }
+  if (!idea) return true;
+  threadId = idea.discussion_thread_id ?? threadId;
 
   await env.DB.prepare(`UPDATE ideas SET decision_reason = ?, updated_at = ? WHERE id = ?`)
     .bind(args, Math.floor(Date.now() / 1000), ideaId)
     .run();
-  await env.SESSIONS.delete(key);
+
+  // Clear the pending key using the durable idea thread id and any candidate
+  // ids Telegram supplied so stale prompts cannot linger.
+  if (threadId) await env.SESSIONS.delete(`idea_reason_pending:${threadId}:${msg.from.id}`);
+  for (const candidate of candidateIds) {
+    await env.SESSIONS.delete(`idea_reason_pending:${candidate}:${msg.from.id}`);
+  }
 
   const fresh = await getIdea(env, ideaId);
   if (!fresh) return true;
@@ -505,9 +535,12 @@ async function handleReasonCommand(
     }
   }
 
-  await sendMessage(env, msg.chat.id, `Reason saved for ${ideaPublicLabel(fresh.public_number)}.`, {
-    message_thread_id: msg.message_thread_id,
-  });
+  const sendOpts = fresh.discussion_thread_id
+    ? { message_thread_id: fresh.discussion_thread_id, reply_parameters: { message_id: fresh.discussion_message_id ?? fresh.discussion_thread_id } }
+    : msg.reply_to_message?.message_id
+      ? { reply_parameters: { message_id: msg.reply_to_message.message_id } }
+      : {};
+  await sendMessage(env, msg.chat.id, `Reason saved for ${ideaPublicLabel(fresh.public_number)}.`, sendOpts);
   return true;
 }
 
