@@ -95,6 +95,7 @@ export interface TelegramMessage {
   message_id: number;
   chat: { id: number; type: string };
   from?: { id: number; username?: string; first_name?: string; last_name?: string };
+  sender_chat?: { id: number; type: string; title?: string; username?: string };
   text?: string;
   caption?: string;
   message_thread_id?: number;
@@ -303,8 +304,12 @@ export async function answerCallbackQuery(
   return await tgCall(env, "answerCallbackQuery", { callback_query_id: callbackQueryId, text, show_alert });
 }
 
-export async function setMyCommands(env: Env, commands: { command: string; description: string }[]) {
-  return await tgCall(env, "setMyCommands", { commands });
+export async function setMyCommands(
+  env: Env,
+  commands: { command: string; description: string }[],
+  scope?: { type: string; chat_id?: number | string; user_id?: number },
+) {
+  return await tgCall(env, "setMyCommands", { commands, scope });
 }
 
 export async function copyMessage(

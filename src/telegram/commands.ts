@@ -18,13 +18,18 @@ const COMMANDS = [
   { command: "help",   description: "How this bot works" },
 ];
 
+const ADMIN_GROUP_COMMANDS = [
+  { command: "reason", description: "Add a reason to an idea decision" },
+];
+
 export async function registerCommands(env: Env) {
   await setMyCommands(env, COMMANDS);
+  await setMyCommands(env, ADMIN_GROUP_COMMANDS, { type: "all_chat_administrators" });
 }
 
 // Idempotent auto-registration triggered from the webhook. Bump
 // COMMANDS_VERSION to force existing bots to re-register.
-const COMMANDS_VERSION = "v2";
+const COMMANDS_VERSION = "v3";
 const COMMANDS_KEY = "meta:commands_registered";
 export async function ensureCommandsRegistered(env: Env) {
   try {

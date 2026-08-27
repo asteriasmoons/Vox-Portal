@@ -355,6 +355,7 @@ export async function handleAdminGroupCommand(
   msg: {
     chat: { id: number };
     from?: { id: number; username?: string; first_name?: string };
+    sender_chat?: { id: number; type: string; title?: string; username?: string };
     message_thread_id?: number;
     reply_to_message?: import("./api").TelegramMessage;
     text?: string;
@@ -362,7 +363,12 @@ export async function handleAdminGroupCommand(
 ): Promise<boolean> {
   const text = (msg.text ?? "").trim();
   if (!text.startsWith("/")) return false;
-  if (!msg.from || !isAdmin(env, msg.from.id)) return false;
+
+  // Anonymous supergroup admins are represented by Telegram through
+  // `sender_chat` (the discussion group itself), not a usable personal User.
+  const anonymousAdmin = msg.sender_chat?.id === discussionChatId(env);
+  const userAdmin = !!msg.from && isAdmin(env, msg.from.id);
+  if (!anonymousAdmin && !userAdmin) return false;
 
   const spaceIdx = text.indexOf(" ");
   const rawCmd = spaceIdx === -1 ? text.slice(1) : text.slice(1, spaceIdx);
@@ -377,6 +383,7 @@ export async function handleAdminGroupCommand(
   // require message_thread_id. /reason is resolved independently above so
   // linked-channel discussion comments are supported too.
   if (!msg.message_thread_id) return false;
+  if (!msg.from || !isAdmin(env, msg.from.id)) return false;
 
   const row = await env.DB.prepare(`SELECT * FROM bugs WHERE discussion_thread_id = ? LIMIT 1`)
     .bind(msg.message_thread_id)
@@ -444,13 +451,16 @@ async function handleReasonCommand(
   msg: {
     chat: { id: number };
     from?: { id: number; username?: string; first_name?: string };
+    sender_chat?: { id: number; type: string; title?: string; username?: string };
     message_thread_id?: number;
     reply_to_message?: import("./api").TelegramMessage;
     text?: string;
   },
   args: string,
 ): Promise<boolean> {
-  if (!msg.from) return true;
+  const actorTgId = msg.from && isAdmin(env, msg.from.id) ? msg.from.id : 0;
+  const anonymousAdmin = msg.sender_chat?.id === discussionChatId(env);
+  if (!actorTgId && !anonymousAdmin) return true;
 
   // Linked channel discussions do not reliably put message_thread_id on
   // user-authored comments. Collect every plausible discussion/root id from
@@ -484,7 +494,8 @@ async function handleReasonCommand(
   // exposed. Check any candidate thread key, then the direct thread id.
   if (ideaId == null) {
     for (const candidate of candidateIds) {
-      const raw = await env.SESSIONS.get(`idea_reason_pending:${candidate}:${msg.from.id}`);
+      if (!actorTgId) break;
+      const raw = await env.SESSIONS.get(`idea_reason_pending:${candidate}:${actorTgId}`);
       const n = raw ? Number(raw) : NaN;
       if (Number.isFinite(n)) { ideaId = n; threadId = candidate; break; }
     }
@@ -514,9 +525,11 @@ async function handleReasonCommand(
 
   // Clear the pending key using the durable idea thread id and any candidate
   // ids Telegram supplied so stale prompts cannot linger.
-  if (threadId) await env.SESSIONS.delete(`idea_reason_pending:${threadId}:${msg.from.id}`);
-  for (const candidate of candidateIds) {
-    await env.SESSIONS.delete(`idea_reason_pending:${candidate}:${msg.from.id}`);
+  if (threadId) await env.SESSIONS.delete(`idea_reason_pending:${threadId}:${actorTgId}`);
+  if (actorTgId) {
+    for (const candidate of candidateIds) {
+      await env.SESSIONS.delete(`idea_reason_pending:${candidate}:${actorTgId}`);
+    }
   }
 
   const fresh = await getIdea(env, ideaId);
