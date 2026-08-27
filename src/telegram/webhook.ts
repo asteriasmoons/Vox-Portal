@@ -44,6 +44,14 @@ export async function dispatchUpdate(env: Env, update: Update): Promise<void> {
       return;
     }
     if (update.chat_join_request) {
+      log.info("chat_join_request_raw", {
+        chatId: update.chat_join_request.chat.id,
+        userId: update.chat_join_request.from.id,
+        userChatId: update.chat_join_request.user_chat_id,
+        queryId: update.chat_join_request.query_id ?? null,
+        inviteLink: update.chat_join_request.invite_link?.invite_link ?? null,
+        createsJoinRequest: update.chat_join_request.invite_link?.creates_join_request ?? null,
+      });
       await handleChatJoinRequest(env, update.chat_join_request);
       return;
     }
