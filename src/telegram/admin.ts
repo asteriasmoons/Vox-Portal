@@ -443,19 +443,50 @@ async function handleReasonCommand(
   },
   args: string,
 ): Promise<boolean> {
-  if (!args || !msg.from || !msg.message_thread_id) return true;
+  if (!msg.from || !msg.message_thread_id) return true;
+  if (!args) {
+    await sendMessage(env, msg.chat.id, "Usage: /reason <text>", {
+      message_thread_id: msg.message_thread_id,
+    });
+    return true;
+  }
+
   const key = `idea_reason_pending:${msg.message_thread_id}:${msg.from.id}`;
   const ideaIdRaw = await env.SESSIONS.get(key);
-  if (!ideaIdRaw) return true;
-  await env.SESSIONS.delete(key);
-  const ideaId = Number(ideaIdRaw);
+
+  // Prefer the exact pending Accept/Reject action. If that short-lived KV key
+  // is gone, resolve the idea directly from this Telegram comment thread so
+  // /reason still works reliably after delays, deploys, or KV misses.
+  let ideaId = ideaIdRaw ? Number(ideaIdRaw) : NaN;
+  if (!Number.isFinite(ideaId)) {
+    const row = await env.DB.prepare(
+      `SELECT id FROM ideas WHERE discussion_thread_id = ? ORDER BY id DESC LIMIT 1`,
+    )
+      .bind(msg.message_thread_id)
+      .first<{ id: number }>();
+    ideaId = row?.id ?? NaN;
+  }
+
+  if (!Number.isFinite(ideaId)) {
+    await sendMessage(env, msg.chat.id, "I couldn't match this thread to an idea.", {
+      message_thread_id: msg.message_thread_id,
+    });
+    return true;
+  }
+
   const { getIdea } = await import("../db/queries");
   const idea = await getIdea(env, ideaId);
-  if (!idea) return true;
+  if (!idea) {
+    await sendMessage(env, msg.chat.id, "I couldn't find that idea record.", {
+      message_thread_id: msg.message_thread_id,
+    });
+    return true;
+  }
 
   await env.DB.prepare(`UPDATE ideas SET decision_reason = ?, updated_at = ? WHERE id = ?`)
     .bind(args, Math.floor(Date.now() / 1000), ideaId)
     .run();
+  await env.SESSIONS.delete(key);
 
   const fresh = await getIdea(env, ideaId);
   if (!fresh) return true;
@@ -472,7 +503,15 @@ async function handleReasonCommand(
         `### ${label} — Reason\n\n${args}\n\n_Updated through the Voxiverse Telegram Mini App._`);
     }
   }
+
+  await sendMessage(env, msg.chat.id, `Reason saved for ${ideaPublicLabel(fresh.public_number)}.`, {
+    message_thread_id: msg.message_thread_id,
+  });
   return true;
+}
+
+function ideaPublicLabel(publicNumber: number): string {
+  return `IDEA-${String(publicNumber).padStart(4, "0")}`;
 }
 
 // Prevent unused-import warnings.
