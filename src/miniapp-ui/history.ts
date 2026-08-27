@@ -140,7 +140,7 @@ function renderRow(bug: BugSummary & { type?: "bug" | "idea" | "beta"; app?: str
   const badgeIcon = document.createElement("img");
   badgeIcon.className = "type-badge-glyph";
   badgeIcon.alt = "";
-  badgeIcon.src = isIdea ? "/icons/decorbulb.svg" : isBeta ? "/icons/devbulb.svg" : "/icons/cutebug.svg";
+  badgeIcon.src = isIdea ? "/icons/decorbulb.svg" : isBeta ? "/icons/starchat.svg" : "/icons/cutebug.svg";
   const badgeText = document.createElement("span");
   badgeText.textContent = isIdea ? "Idea" : isBeta ? "Beta" : "Bug";
   typeBadge.append(badgeIcon, badgeText);
