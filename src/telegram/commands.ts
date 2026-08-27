@@ -13,6 +13,7 @@ const COMMANDS = [
   { command: "start",  description: "About Vox Bugs Bot" },
   { command: "bug",    description: "Submit a new bug report" },
   { command: "mybugs", description: "See reports you've submitted" },
+  { command: "reason", description: "Add a reason to an idea decision" },
   { command: "cancel", description: "Cancel an in-progress bug report" },
   { command: "help",   description: "How this bot works" },
 ];
@@ -23,7 +24,7 @@ export async function registerCommands(env: Env) {
 
 // Idempotent auto-registration triggered from the webhook. Bump
 // COMMANDS_VERSION to force existing bots to re-register.
-const COMMANDS_VERSION = "v1";
+const COMMANDS_VERSION = "v2";
 const COMMANDS_KEY = "meta:commands_registered";
 export async function ensureCommandsRegistered(env: Env) {
   try {
