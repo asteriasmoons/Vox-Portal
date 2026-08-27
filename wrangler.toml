@@ -52,7 +52,7 @@ id = "a20bed8a035140eea3087a16322c3ad9"
  
 # ── Non-secret vars ─────────────────────────────────────────
 [vars]
-BOT_USERNAME = "VoxBugsBot"
+BOT_USERNAME = "voxportalbot"
 MINIAPP_SHORT_NAME = "bugs"
 PUBLIC_ORIGIN = "https://bugs.voxiverse.ink"
 
