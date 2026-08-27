@@ -52,6 +52,7 @@ You need three things in Telegram *before* the bot works end-to-end:
 5. Add **Vox Bugs Bot** as an **administrator of the discussion group** with permission to `Send Messages`, `Send Media`, and `Manage Topics` (Manage Topics is required so the bot may post inside thread replies).
 6. In [@BotFather](https://t.me/BotFather): `/setprivacy` for your bot → **Disable**. This lets the bot see all messages in the discussion group so it can capture Telegram's auto-forward mirror (needed to learn each bug's thread id) and process admin `/note`, `/fixed`, `/dup` commands typed into threads.
 7. Get the numeric IDs of both chats. Easiest method: forward one message from each into [@JsonDumpBot](https://t.me/JsonDumpBot). Channel IDs look like `-1001234567890`; group IDs look like `-1009876543210`. Set them as `CHANNEL_ID` and `DISCUSSION_CHAT_ID` secrets.
+8. For password-gated channel joins, enable join-request approval on the channel invite link. The bot must have the channel admin permission to `Invite Users`. When a user requests to join, the bot DMs them for the access password and approves the request only when they answer correctly.
 
 ### 3. The Mini App
 
@@ -79,6 +80,7 @@ Non-secret values live in `wrangler.toml` under `[vars]`. Secrets are set with `
 | `CHANNEL_ID` | secret | Numeric id of the Bug Reports channel, e.g. `-1001234567890`. |
 | `DISCUSSION_CHAT_ID` | secret | Numeric id of the linked discussion group. |
 | `ADMIN_TELEGRAM_IDS` | secret | Comma-separated Telegram user IDs allowed to change status / mark fixed / mark duplicate. |
+| `JOIN_APPROVAL_PASSWORD` | secret | Password required before approving channel join requests. |
 
 For local dev, copy `.dev.vars.example` to `.dev.vars` and fill it in. **Never commit `.dev.vars`.** The bot token is never exposed to the browser.
 
@@ -109,6 +111,7 @@ wrangler secret put TELEGRAM_WEBHOOK_SECRET
 wrangler secret put CHANNEL_ID
 wrangler secret put DISCUSSION_CHAT_ID
 wrangler secret put ADMIN_TELEGRAM_IDS
+wrangler secret put JOIN_APPROVAL_PASSWORD
 
 # 5. Deploy
 npm run deploy

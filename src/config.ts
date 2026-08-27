@@ -17,6 +17,7 @@ export interface Env {
   CHANNEL_ID: string;             // parsed as number where used
   DISCUSSION_CHAT_ID: string;
   ADMIN_TELEGRAM_IDS: string;     // comma-separated
+  JOIN_APPROVAL_PASSWORD?: string;
 
   // Optional. If unset, GitHub destination is skipped and bugs remain
   // Telegram-only. Set via `wrangler secret put GITHUB_TOKEN`.

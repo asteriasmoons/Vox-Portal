@@ -115,6 +115,23 @@ export interface TelegramMessage {
   ephemeral_message_id?: number;
 }
 
+export interface TelegramChatJoinRequest {
+  chat: { id: number; type: string; title?: string; username?: string };
+  from: { id: number; is_bot?: boolean; first_name: string; last_name?: string; username?: string };
+  user_chat_id: number;
+  date: number;
+  bio?: string;
+  invite_link?: {
+    invite_link: string;
+    name?: string;
+    creates_join_request?: boolean;
+    is_primary?: boolean;
+    is_revoked?: boolean;
+    pending_join_request_count?: number;
+  };
+  query_id?: string;
+}
+
 // ── Bot API 10.3 Rich Messages + Ephemeral Messages ───────
 // Sources verified against https://core.telegram.org/bots/api-changelog
 // (Bot API 10.1 Rich Messages foundation, 10.2 Ephemeral Messages,
@@ -302,6 +319,28 @@ export async function answerCallbackQuery(
   show_alert = false,
 ) {
   return await tgCall(env, "answerCallbackQuery", { callback_query_id: callbackQueryId, text, show_alert });
+}
+
+export async function approveChatJoinRequest(
+  env: Env,
+  chatId: number | string,
+  userId: number,
+): Promise<true> {
+  return await tgCall<true>(env, "approveChatJoinRequest", {
+    chat_id: chatId,
+    user_id: userId,
+  });
+}
+
+export async function declineChatJoinRequest(
+  env: Env,
+  chatId: number | string,
+  userId: number,
+): Promise<true> {
+  return await tgCall<true>(env, "declineChatJoinRequest", {
+    chat_id: chatId,
+    user_id: userId,
+  });
 }
 
 export async function setMyCommands(

@@ -58,7 +58,7 @@ const url = `${origin.replace(/\/$/, "")}/webhook`;
 const body = {
   url,
   secret_token: secret,
-  allowed_updates: ["message", "edited_message", "callback_query", "channel_post"],
+  allowed_updates: ["message", "edited_message", "callback_query", "channel_post", "chat_join_request"],
   drop_pending_updates: false,
 };
 

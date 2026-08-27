@@ -7,6 +7,7 @@ import { discussionChatId } from "../config";
 import { handleCommand, ensureCommandsRegistered } from "./commands";
 import { handleWizardMessage, handleWizardCallback, getSession } from "./conversation";
 import { handleAdminCallback, handleAdminGroupCommand } from "./admin";
+import { handleChatJoinRequest, handleJoinApprovalPasswordMessage } from "./joinApprovals";
 import { recordDiscussionMirror, recordIdeaDiscussionMirror } from "./channel";
 import { claimUpdateId } from "../db/queries";
 import { log } from "../util/log";
@@ -17,6 +18,7 @@ interface Update {
   message?: TelegramMessage;
   edited_message?: TelegramMessage;
   channel_post?: TelegramMessage;
+  chat_join_request?: import("./api").TelegramChatJoinRequest;
   callback_query?: {
     id: string;
     from: { id: number; username?: string; first_name?: string };
@@ -39,6 +41,10 @@ export async function dispatchUpdate(env: Env, update: Update): Promise<void> {
   try {
     if (update.callback_query) {
       await onCallbackQuery(env, update.callback_query);
+      return;
+    }
+    if (update.chat_join_request) {
+      await handleChatJoinRequest(env, update.chat_join_request);
       return;
     }
     if (update.message) {
@@ -83,6 +89,9 @@ async function onMessage(env: Env, msg: TelegramMessage) {
 
   // Case B: private chat with the bot.
   if (msg.chat.type === "private") {
+    const handledJoinApproval = await handleJoinApprovalPasswordMessage(env, msg);
+    if (handledJoinApproval) return;
+
     // Slash command?
     const entities = msg.entities ?? [];
     const first = entities[0];
