@@ -5,7 +5,7 @@
 import type { Env } from "../config";
 import { validateInitData } from "../telegram/initdata";
 import { createBug, resendBugToTelegram, type IncomingAttachment } from "../bugs/service";
-import { createIdea, type IncomingIdeaAttachment } from "../ideas/service";
+import { createIdea, resendIdeaToTelegram, type IncomingIdeaAttachment } from "../ideas/service";
 import { listIdeasByReporter, getIdea, listIdeaAttachments } from "../db/queries";
 import { ideaPublicId } from "../ideas/formatting";
 import { postChannelTicket, postReportToThread, postR2AttachmentToThread, postTelegramAttachmentToThread, waitForDiscussionMirror } from "../telegram/channel";
@@ -189,24 +189,47 @@ export async function handleMyIdeaDetail(env: Env, req: Request, id: number): Pr
   });
 }
 
+// POST /api/myideas/:id/resubmit — resend only this idea's Telegram delivery.
+export async function handleResubmitIdea(env: Env, req: Request, id: number): Promise<Response> {
+  const initData = req.headers.get("x-telegram-init-data") ?? "";
+  let user;
+  try { ({ user } = await validateInitData(env, initData)); }
+  catch { return json({ ok: false, error: "auth" }, { status: 401 }); }
+
+  const row = await getIdea(env, id);
+  if (!row || row.reporter_tg_id !== user.id) {
+    return json({ ok: false, error: "not_found" }, { status: 404 });
+  }
+  try {
+    const result = await resendIdeaToTelegram(env, id);
+    return json({
+      ok: result.telegram !== "failed",
+      public_id: ideaPublicId(result.row),
+      telegram: result.telegram,
+      report_posted: !!result.row.report_message_id,
+      github_created: !!result.row.github_comment_id,
+      github_url: result.row.github_comment_url,
+    }, result.telegram === "failed" ? { status: 500 } : {});
+  } catch (e) {
+    log.error("resubmit_idea_failed", e, { ideaId: id });
+    return json({ ok: false, error: "server" }, { status: 500 });
+  }
+}
+
 // POST /api/submit-idea — creates a Feature Idea (Telegram + GitHub Discussion).
 export async function handleSubmitIdea(env: Env, req: Request): Promise<Response> {
-  console.log("submit_idea.enter");
   const initData = req.headers.get("x-telegram-init-data") ?? "";
   let user;
   try {
     ({ user } = await validateInitData(env, initData));
-  } catch (e) { console.log("submit_idea.auth_fail", String(e)); return json({ ok: false, error: "auth" }, { status: 401 }); }
-  console.log("submit_idea.auth_ok", user.id);
+  } catch { return json({ ok: false, error: "auth" }, { status: 401 }); }
 
   let payload: IdeaSubmitPayload;
   try { payload = (await req.json()) as IdeaSubmitPayload; }
-  catch (e) { console.log("submit_idea.json_fail", String(e)); return badRequest("invalid JSON"); }
-  console.log("submit_idea.payload_ok", JSON.stringify({app:payload.app, title:payload.title, atts: (payload.attachments||[]).length}));
+  catch { return badRequest("invalid JSON"); }
 
   const errs = validateIdeaPayload(payload);
-  if (errs.length) { console.log("submit_idea.validate_fail", errs.join("; ")); return badRequest(errs.join("; ")); }
-  console.log("submit_idea.validate_ok");
+  if (errs.length) return badRequest(errs.join("; "));
 
   // Materialize R2 attachments back to bytes.
   const attachments: IncomingIdeaAttachment[] = [];
@@ -228,7 +251,6 @@ export async function handleSubmitIdea(env: Env, req: Request): Promise<Response
   }
 
   try {
-    console.log("submit_idea.calling_createIdea");
     const row = await createIdea(
       env,
       {
@@ -266,7 +288,6 @@ export async function handleSubmitIdea(env: Env, req: Request): Promise<Response
       github,
     });
   } catch (e) {
-    console.log("submit_idea.createIdea_threw", String(e), (e as Error)?.stack ?? "");
     log.error("miniapp_submit_idea_failed", e, { user_id: user.id });
     return json({ ok: false, error: "server" }, { status: 500 });
   }

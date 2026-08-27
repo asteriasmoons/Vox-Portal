@@ -156,12 +156,9 @@ function renderRow(bug: BugSummary & { type?: "bug" | "idea"; app?: string }): H
   meta.textContent = parts.join(" · ");
   li.append(row1, title, meta);
 
-  // Delivery banner: shows only when something didn't land on Telegram.
-  // The chip's own click resubmits inline WITHOUT expanding the detail view,
-  // so a stuck report can be retried from the list with one tap.
-  // IDEAS don't yet have a resend endpoint — hide the banner so tapping
-  // it can't accidentally resend a bug with the same numeric id.
-  const missing = !isIdea && (bug.telegram_posted === false || bug.report_posted === false);
+  // Delivery banner: shows when this specific submission did not fully land on Telegram.
+  // Bug and idea ids live in separate tables, so resubmission MUST remain type-aware.
+  const missing = bug.telegram_posted === false || bug.report_posted === false;
   if (missing) {
     const banner = document.createElement("div");
     banner.className = "delivery-banner";
@@ -176,7 +173,7 @@ function renderRow(bug: BugSummary & { type?: "bug" | "idea"; app?: string }): H
     btn.textContent = "Resend";
     btn.onclick = (ev) => {
       ev.stopPropagation();
-      void resendFromRow(bug.id, btn, label);
+      void resendFromRow(bug.id, isIdea ? "idea" : "bug", btn, label);
     };
     banner.append(label, btn);
     li.appendChild(banner);
@@ -189,11 +186,12 @@ function renderRow(bug: BugSummary & { type?: "bug" | "idea"; app?: string }): H
 }
 
 // Inline resend triggered from the History row's ⚠ chip.
-async function resendFromRow(id: number, btn: HTMLButtonElement, label: HTMLElement): Promise<void> {
+async function resendFromRow(id: number, type: "bug" | "idea", btn: HTMLButtonElement, label: HTMLElement): Promise<void> {
   btn.disabled = true;
   btn.textContent = "Sending…";
   try {
-    const res = await fetch(`/api/mybugs/${id}/resubmit`, { method: "POST", headers: authHeaders() });
+    const base = type === "idea" ? "/api/myideas" : "/api/mybugs";
+    const res = await fetch(`${base}/${id}/resubmit`, { method: "POST", headers: authHeaders() });
     const data = await res.json() as { ok: boolean; error?: string; telegram?: string };
     if (!res.ok || !data.ok) throw new Error(data.error || "resubmit");
     label.textContent = "✓ Sent to Telegram";
@@ -218,9 +216,9 @@ async function openDetail(id: number, type: "bug" | "idea" = "bug"): Promise<voi
   try {
     if (type === "idea") {
       const res = await fetch(`/api/myideas/${id}`, { headers: authHeaders() });
-      const data = await res.json() as { ok: boolean; idea?: import("./api").SubmitPayload & Record<string, unknown> };
+      const data = await res.json() as { ok: boolean; idea?: Record<string, unknown>; attachments?: AttachmentDetail[] };
       if (!res.ok || !data.ok || !data.idea) throw new Error("detail");
-      renderIdeaDetail(data.idea);
+      renderIdeaDetail(data.idea, data.attachments ?? []);
       loading.classList.add("hidden");
       content.classList.remove("hidden");
       return;
@@ -239,7 +237,7 @@ async function openDetail(id: number, type: "bug" | "idea" = "bug"): Promise<voi
 // Detail renderer for ideas. The detail template is shared with bugs, so
 // we hide bug-only grid cells (Version, Build, Device, OS, Category,
 // Severity, Frequency) and relabel the copy-card headings to idea terms.
-function renderIdeaDetail(idea: Record<string, unknown>): void {
+function renderIdeaDetail(idea: Record<string, unknown>, attachments: AttachmentDetail[]): void {
   const get = (k: string) => (idea[k] as string | null | undefined) ?? "";
   setText("#detail-public-id", String(idea.public_id ?? ""));
   setText("#detail-title", String(idea.title ?? ""));
@@ -298,14 +296,23 @@ function renderIdeaDetail(idea: Record<string, unknown>): void {
   const attachmentList = document.getElementById("detail-attachments");
   if (attachmentList) {
     attachmentList.innerHTML = "";
-    const li = document.createElement("li");
-    li.className = "detail-attachment empty-attachment";
-    li.textContent = "See the Telegram thread for any attachments.";
-    attachmentList.appendChild(li);
+    if (!attachments.length) {
+      const li = document.createElement("li");
+      li.className = "detail-attachment empty-attachment";
+      li.textContent = "No attachments";
+      attachmentList.appendChild(li);
+    } else {
+      for (const a of attachments) attachmentList.appendChild(renderAttachment(a));
+    }
   }
 
   const rb = document.getElementById("detail-resubmit") as HTMLButtonElement | null;
-  if (rb) rb.style.display = "none";
+  if (rb) {
+    rb.style.display = "";
+    rb.textContent = "Resubmit to Telegram";
+    rb.disabled = false;
+    rb.onclick = () => void resubmitIdea(Number(idea.id), rb);
+  }
 }
 
 function renderDetail(bug: BugDetail, attachments: AttachmentDetail[]): void {
@@ -378,15 +385,40 @@ function renderAttachment(a: AttachmentDetail): HTMLLIElement {
   return li;
 }
 
+async function resubmitIdea(id: number, button: HTMLButtonElement): Promise<void> {
+  button.disabled = true;
+  button.textContent = "Resubmitting…";
+  const feedback = requireEl("#detail-resubmit-feedback");
+  feedback.textContent = "";
+  feedback.classList.remove("error");
+  try {
+    const res = await fetch(`/api/myideas/${id}/resubmit`, { method: "POST", headers: authHeaders() });
+    const data = await res.json() as { ok: boolean; error?: string };
+    if (!res.ok || !data.ok) throw new Error(data.error || "resubmit");
+    feedback.classList.add("success");
+    feedback.textContent = "Idea details and any pending attachments were sent to the Telegram comments.";
+    button.textContent = "Resubmitted";
+  } catch (e) {
+    const code = e instanceof Error ? e.message : "resubmit";
+    feedback.classList.remove("success");
+    feedback.classList.add("error");
+    feedback.textContent = friendlyResubmitError(code);
+    button.disabled = false;
+    button.textContent = "Resubmit to Telegram";
+  }
+}
+
 async function resubmitBug(id: number, button: HTMLButtonElement): Promise<void> {
   button.disabled = true;
   button.textContent = "Resubmitting…";
   const feedback = requireEl("#detail-resubmit-feedback");
   feedback.textContent = "";
+  feedback.classList.remove("error");
   try {
     const res = await fetch(`/api/mybugs/${id}/resubmit`, { method: "POST", headers: authHeaders() });
     const data = await res.json() as { ok: boolean; error?: string };
     if (!res.ok || !data.ok) throw new Error(data.error || "resubmit");
+    feedback.classList.add("success");
     feedback.textContent = "Report details and any pending attachments were sent to the Telegram comments.";
     button.textContent = "Resubmitted";
   } catch (e) {

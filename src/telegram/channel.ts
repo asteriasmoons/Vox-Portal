@@ -373,7 +373,7 @@ export async function postIdeaReportToThread(
   row: IdeaRow,
   mirrorMessageIdMaybe: number | null,
 ): Promise<TelegramMessage | null> {
-  const mirrorMessageId = mirrorMessageIdMaybe ?? (await waitForDiscussionMirror(env, row.channel_message_id!));
+  const mirrorMessageId = mirrorMessageIdMaybe ?? (await waitForIdeaDiscussionMirror(env, row.channel_message_id!));
   if (!mirrorMessageId) {
     log.warn("idea_discussion_mirror_unresolved_for_report", { ideaId: row.id });
     return null;
@@ -400,9 +400,15 @@ export async function postIdeaTelegramAttachmentToThread(
   fileId: string,
   caption?: string,
 ): Promise<number | null> {
-  if (!row.discussion_thread_id) return null;
+  if (!row.discussion_message_id) return null;
   const chat = discussionChatId(env);
-  const opts = { message_thread_id: row.discussion_thread_id, caption, parse_mode: "HTML" as const };
+  const threadId = row.discussion_thread_id ?? row.discussion_message_id;
+  const opts = {
+    message_thread_id: threadId,
+    reply_parameters: { message_id: row.discussion_message_id },
+    caption,
+    parse_mode: "HTML" as const,
+  };
   let msg: TelegramMessage;
   switch (kind) {
     case "photo":     msg = await sendPhoto(env, chat, fileId, opts); break;
@@ -421,17 +427,76 @@ export async function postIdeaR2AttachmentToThread(
   mime: string,
   fileName: string,
 ): Promise<number | null> {
-  if (!row.discussion_thread_id) return null;
+  if (!row.discussion_message_id) return null;
   const chat = discussionChatId(env);
+  const threadId = row.discussion_thread_id ?? row.discussion_message_id;
   const form = new FormData();
   form.append("chat_id", String(chat));
-  form.append("message_thread_id", String(row.discussion_thread_id));
+  form.append("message_thread_id", String(threadId));
+  form.append("reply_parameters", JSON.stringify({ message_id: row.discussion_message_id }));
   const blob = new Blob([bytes], { type: mime });
   let method = "sendDocument"; let field = "document";
   if (mime.startsWith("image/") && mime !== "image/gif") { method = "sendPhoto"; field = "photo"; }
   else if (mime.startsWith("video/")) { method = "sendVideo"; field = "video"; }
   else if (mime === "image/gif")      { method = "sendAnimation"; field = "animation"; }
   form.append(field, blob, fileName);
-  const msg = await tgCallMultipart<TelegramMessage>(env, method, form);
-  return msg.message_id;
+  try {
+    const msg = await tgCallMultipart<TelegramMessage>(env, method, form);
+    return msg.message_id;
+  } catch (e) {
+    if (!(e instanceof TelegramError) || method === "sendDocument" || e.error_code !== 400) throw e;
+    log.warn("idea_attachment_media_fallback_to_document", { ideaId: row.id, fileName, mime, method, reason: e.description });
+    const fallback = new FormData();
+    fallback.append("chat_id", String(chat));
+    fallback.append("message_thread_id", String(threadId));
+    fallback.append("reply_parameters", JSON.stringify({ message_id: row.discussion_message_id }));
+    fallback.append("document", blob, fileName);
+    const msg = await tgCallMultipart<TelegramMessage>(env, "sendDocument", fallback);
+    return msg.message_id;
+  }
+}
+
+// Idea-specific mirror lookup. It uses the same webhook-populated KV mapping as bugs,
+// but its SQL fallback reads the ideas table rather than accidentally querying bugs.
+export async function waitForIdeaDiscussionMirror(
+  env: Env,
+  channelMessageId: number,
+  timeoutMs = 8000,
+): Promise<number | null> {
+  const key = `mirror:${channelMessageId}`;
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const cached = await env.SESSIONS.get(key);
+    if (cached) {
+      const n = Number(cached);
+      if (Number.isFinite(n)) return n;
+    }
+    const persisted = await env.DB.prepare(
+      `SELECT discussion_message_id FROM ideas
+       WHERE channel_message_id = ? AND discussion_message_id IS NOT NULL
+       LIMIT 1`,
+    )
+      .bind(channelMessageId)
+      .first<{ discussion_message_id: number }>();
+    if (persisted?.discussion_message_id) return persisted.discussion_message_id;
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  return null;
+}
+
+// Persist Telegram's auto-forwarded channel mirror onto the matching idea row.
+// This is deliberately separate from recordDiscussionMirror(), which remains the
+// existing bug implementation unchanged. The webhook calls both; only the table
+// containing the matching channel_message_id is affected.
+export async function recordIdeaDiscussionMirror(
+  env: Env,
+  channelMessageId: number,
+  discussionMessageId: number,
+): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE ideas SET discussion_message_id = ?, discussion_thread_id = ?, updated_at = ?
+     WHERE channel_message_id = ?`,
+  )
+    .bind(discussionMessageId, discussionMessageId, Math.floor(Date.now() / 1000), channelMessageId)
+    .run();
 }

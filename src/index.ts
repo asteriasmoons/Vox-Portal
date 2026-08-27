@@ -12,7 +12,7 @@
 
 import type { Env } from "./config";
 import { dispatchUpdate } from "./telegram/webhook";
-import { handleConfig, handleSubmit, handleUpload, handleMyBugs, handleMyBugDetail, handleResubmitBug, handleSubmitIdea, handleMyIdeaDetail } from "./miniapp/api";
+import { handleConfig, handleSubmit, handleUpload, handleMyBugs, handleMyBugDetail, handleResubmitBug, handleSubmitIdea, handleMyIdeaDetail, handleResubmitIdea } from "./miniapp/api";
 import { registerCommands } from "./telegram/commands";
 import { log } from "./util/log";
 
@@ -49,6 +49,8 @@ export default {
     if (resubmitMatch && req.method === "POST") return handleResubmitBug(env, req, Number(resubmitMatch[1]));
     const ideaDetailMatch = url.pathname.match(/^\/api\/myideas\/(\d+)$/);
     if (ideaDetailMatch && req.method === "GET") return handleMyIdeaDetail(env, req, Number(ideaDetailMatch[1]));
+    const ideaResubmitMatch = url.pathname.match(/^\/api\/myideas\/(\d+)\/resubmit$/);
+    if (ideaResubmitMatch && req.method === "POST") return handleResubmitIdea(env, req, Number(ideaResubmitMatch[1]));
 
     // ── One-shot admin: register slash-command list with Telegram ──
     if (url.pathname === "/admin/register-commands" && req.method === "POST") {

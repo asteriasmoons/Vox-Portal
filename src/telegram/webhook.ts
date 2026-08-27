@@ -7,7 +7,7 @@ import { discussionChatId } from "../config";
 import { handleCommand, ensureCommandsRegistered } from "./commands";
 import { handleWizardMessage, handleWizardCallback, getSession } from "./conversation";
 import { handleAdminCallback, handleAdminGroupCommand } from "./admin";
-import { recordDiscussionMirror } from "./channel";
+import { recordDiscussionMirror, recordIdeaDiscussionMirror } from "./channel";
 import { claimUpdateId } from "../db/queries";
 import { log } from "../util/log";
 import type { TelegramMessage } from "./api";
@@ -62,6 +62,11 @@ async function onMessage(env: Env, msg: TelegramMessage) {
       typeof msg.forward_origin.message_id === "number"
     ) {
       await recordDiscussionMirror(
+        env,
+        msg.forward_origin.message_id,
+        msg.message_id,
+      );
+      await recordIdeaDiscussionMirror(
         env,
         msg.forward_origin.message_id,
         msg.message_id,

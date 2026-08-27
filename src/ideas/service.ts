@@ -21,7 +21,8 @@ import type { Env } from "../config";
 import { discussionChatId } from "../config";
 import {
   insertIdea, nextIdeaNumber, setIdeaTelegramLinkage, saveIdeaGitHubMeta,
-  insertIdeaAttachment, setIdeaAttachmentPostedMessage, getIdea,
+  insertIdeaAttachment, setIdeaAttachmentPostedMessage, getIdea, clearIdeaTelegramLinkage,
+  listIdeaAttachments,
   updateIdeaStatus as dbUpdateIdeaStatus,
 } from "../db/queries";
 import type { IdeaRow, NewIdeaInput, IdeaAttachmentRow } from "../db/types";
@@ -34,7 +35,7 @@ import {
   postIdeaTelegramAttachmentToThread,
   postIdeaR2AttachmentToThread,
   refreshIdeaRichReport,
-  waitForDiscussionMirror,
+  waitForIdeaDiscussionMirror,
 } from "../telegram/channel";
 import {
   renderIdeaReporterDm, renderIdeaSubmissionConfirmation, ideaPublicId,
@@ -89,7 +90,7 @@ export async function createIdea(
   row = { ...row, channel_message_id: channelMessageId };
 
   // 2) Discussion mirror + Rich Message report.
-  const mirrorMessageId = await waitForDiscussionMirror(env, channelMessageId);
+  const mirrorMessageId = await waitForIdeaDiscussionMirror(env, channelMessageId);
   if (!mirrorMessageId) {
     for (const att of attachments) await persistAttachment(env, row.id, att);
     log.error("idea_discussion_mirror_missing", new Error("mirror not received"), {
@@ -234,6 +235,96 @@ async function persistAttachment(env: Env, ideaId: number, att: IncomingIdeaAtta
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+// ── Resend to Telegram ─────────────────────────────────
+// Idea-specific equivalent of resendBugToTelegram. It never calls bug endpoints
+// or reads bug rows, so IDEA-0001 can never accidentally resend BUG-0001.
+export async function resendIdeaToTelegram(
+  env: Env,
+  ideaId: number,
+  opts: { force?: boolean } = {},
+): Promise<{ row: IdeaRow; telegram: "posted" | "already_posted" | "failed" }> {
+  let row = await getIdea(env, ideaId);
+  if (!row) throw new Error("idea_not_found");
+
+  if (row.channel_message_id && row.report_message_id && !opts.force) {
+    return { row, telegram: "already_posted" };
+  }
+
+  if (opts.force && row.channel_message_id) {
+    await clearIdeaTelegramLinkage(env, ideaId);
+    row = (await getIdea(env, ideaId))!;
+  }
+
+  // If there is no usable channel ticket, create a fresh one.
+  let channelMessageId = row.channel_message_id;
+  if (!channelMessageId) {
+    try {
+      channelMessageId = await postIdeaChannelTicket(env, row);
+    } catch (e) {
+      log.error("idea_resend_channel_post_failed", e, { ideaId });
+      return { row, telegram: "failed" };
+    }
+    row = { ...row, channel_message_id: channelMessageId };
+  }
+
+  // Resolve the exact auto-forwarded channel mirror, then persist it on the idea row.
+  let mirrorMessageId = row.discussion_message_id
+    ?? await waitForIdeaDiscussionMirror(env, channelMessageId, 8000);
+  if (!mirrorMessageId) {
+    // A stale/legacy channel post cannot be recovered reliably: create a new
+    // channel ticket for the SAME idea and wait for its fresh mirror.
+    channelMessageId = await postIdeaChannelTicket(env, row);
+    mirrorMessageId = await waitForIdeaDiscussionMirror(env, channelMessageId, 8000);
+    if (!mirrorMessageId) {
+      log.error("idea_resend_mirror_missing", new Error("no discussion mirror"), { ideaId, channelMessageId });
+      return { row, telegram: "failed" };
+    }
+  }
+
+  await setIdeaTelegramLinkage(env, row.id, channelMessageId, mirrorMessageId, mirrorMessageId);
+  row = { ...row, channel_message_id: channelMessageId, discussion_message_id: mirrorMessageId, discussion_thread_id: mirrorMessageId };
+
+  const reportMessage = await postIdeaReportToThread(env, row, mirrorMessageId);
+  if (!reportMessage) {
+    row = (await getIdea(env, ideaId)) ?? row;
+    return { row, telegram: "failed" };
+  }
+
+  const stored = await listIdeaAttachments(env, row.id);
+  for (const a of stored) {
+    if (a.posted_message_id) continue;
+    try {
+      await sleep(1100);
+      let posted: number | null = null;
+      if (a.telegram_file_id) {
+        posted = await postIdeaTelegramAttachmentToThread(env, row, a.kind, a.telegram_file_id);
+      } else if (a.r2_key) {
+        const obj = await env.ATTACHMENTS.get(a.r2_key);
+        if (obj) {
+          posted = await postIdeaR2AttachmentToThread(
+            env, row, await obj.arrayBuffer(),
+            a.mime_type ?? obj.httpMetadata?.contentType ?? "application/octet-stream",
+            a.file_name ?? "attachment",
+          );
+        }
+      }
+      if (posted) await setIdeaAttachmentPostedMessage(env, a.id, posted);
+    } catch (e) {
+      log.warn("idea_resend_attachment_failed", { ideaId, attachmentId: a.id, err: String(e) });
+    }
+  }
+
+  // GitHub is independent and idempotent from the user's perspective: only
+  // retry it when no Discussion comment exists yet.
+  row = (await getIdea(env, ideaId)) ?? row;
+  if (!row.github_comment_id) {
+    try { await maybePostGitHubDiscussion(env, row, []); }
+    catch (e) { log.warn("idea_resend_github_retry_failed", { ideaId, err: String(e) }); }
+  }
+
+  return { row: (await getIdea(env, ideaId)) ?? row, telegram: "posted" };
 }
 
 // ── Status changes ─────────────────────────────────────

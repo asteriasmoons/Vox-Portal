@@ -343,6 +343,23 @@ export async function setIdeaReportMessageId(env: Env, ideaId: number, messageId
     .run();
 }
 
+export async function clearIdeaTelegramLinkage(env: Env, ideaId: number): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE ideas SET
+       channel_message_id = NULL,
+       discussion_message_id = NULL,
+       discussion_thread_id = NULL,
+       report_message_id = NULL,
+       updated_at = ?
+     WHERE id = ?`,
+  )
+    .bind(Math.floor(Date.now() / 1000), ideaId)
+    .run();
+  await env.DB.prepare(`UPDATE idea_attachments SET posted_message_id = NULL WHERE idea_id = ?`)
+    .bind(ideaId)
+    .run();
+}
+
 export interface IdeaGitHubPatch {
   github_repo?: string | null;
   github_discussion_id?: string | null;
