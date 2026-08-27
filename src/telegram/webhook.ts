@@ -39,6 +39,9 @@ export async function dispatchUpdate(env: Env, update: Update): Promise<void> {
   await ensureCommandsRegistered(env);
 
   try {
+    if (update.message) {
+      log.info("telegram_message_chat_probe", { chatId: update.message.chat.id, chatType: update.message.chat.type, chatTitle: (update.message.chat as any).title ?? null });
+    }
     if (update.callback_query) {
       await onCallbackQuery(env, update.callback_query);
       return;
