@@ -18,6 +18,7 @@ export interface Env {
   DISCUSSION_CHAT_ID: string;
   ADMIN_TELEGRAM_IDS: string;     // comma-separated
   JOIN_APPROVAL_PASSWORD?: string;
+  JOIN_APPROVAL_CHAT_IDS?: string; // comma-separated chat IDs, or "*" for any chat where the bot is admin
 
   // Optional. If unset, GitHub destination is skipped and bugs remain
   // Telegram-only. Set via `wrangler secret put GITHUB_TOKEN`.

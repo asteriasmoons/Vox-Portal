@@ -33,11 +33,12 @@ const userKey = (userId: number) => `join:user:${userId}`;
 const chatKey = (userChatId: number) => `join:chat:${userChatId}`;
 
 export async function handleChatJoinRequest(env: Env, request: TelegramChatJoinRequest): Promise<void> {
-  if (request.chat.id !== channelId(env)) {
+  const allowedChatIds = joinApprovalChatIds(env);
+  if (allowedChatIds && !allowedChatIds.has(request.chat.id)) {
     log.warn("chat_join_request_ignored_wrong_chat", {
       chatId: request.chat.id,
       userId: request.from.id,
-      configuredChannelId: channelId(env),
+      configuredJoinApprovalChatIds: [...allowedChatIds],
     });
     return;
   }
@@ -200,6 +201,19 @@ async function declineAndClear(env: Env, pending: PendingJoinApproval, eventName
 function joinPassword(env: Env): string | null {
   const password = env.JOIN_APPROVAL_PASSWORD?.trim();
   return password || null;
+}
+
+function joinApprovalChatIds(env: Env): Set<number> | null {
+  const configured = env.JOIN_APPROVAL_CHAT_IDS?.trim();
+  if (configured === "*" || configured?.toLowerCase() === "all") return null;
+
+  const ids = new Set<number>();
+  for (const raw of (configured || env.CHANNEL_ID).split(",")) {
+    const id = Number(raw.trim());
+    if (Number.isFinite(id)) ids.add(id);
+  }
+  if (!ids.size) ids.add(channelId(env));
+  return ids;
 }
 
 function normalizePassword(value: string): string {

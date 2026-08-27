@@ -81,6 +81,7 @@ Non-secret values live in `wrangler.toml` under `[vars]`. Secrets are set with `
 | `DISCUSSION_CHAT_ID` | secret | Numeric id of the linked discussion group. |
 | `ADMIN_TELEGRAM_IDS` | secret | Comma-separated Telegram user IDs allowed to change status / mark fixed / mark duplicate. |
 | `JOIN_APPROVAL_PASSWORD` | secret | Password required before approving channel join requests. |
+| `JOIN_APPROVAL_CHAT_IDS` | secret | Comma-separated channel/group IDs to password-gate, or `*` for any join request received by this bot. Defaults to `CHANNEL_ID`. |
 
 For local dev, copy `.dev.vars.example` to `.dev.vars` and fill it in. **Never commit `.dev.vars`.** The bot token is never exposed to the browser.
 
@@ -112,6 +113,7 @@ wrangler secret put CHANNEL_ID
 wrangler secret put DISCUSSION_CHAT_ID
 wrangler secret put ADMIN_TELEGRAM_IDS
 wrangler secret put JOIN_APPROVAL_PASSWORD
+wrangler secret put JOIN_APPROVAL_CHAT_IDS
 
 # 5. Deploy
 npm run deploy
