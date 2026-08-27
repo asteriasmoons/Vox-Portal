@@ -1,4 +1,10 @@
 import type { CategoryId, SeverityId, StatusId, FrequencyId } from "../bugs/constants";
+import type {
+  BetaFeedbackTypeId,
+  BetaOverallExperienceId,
+  BetaStatusId,
+  BetaWouldUseId,
+} from "../beta/constants";
 
 export interface BugRow {
   id: number;
@@ -96,6 +102,67 @@ export interface NewIdeaInput {
   why_useful?: string | null;
   how_it_works?: string | null;
   where_it_belongs?: string | null;
+  notes?: string | null;
+}
+
+// ── Beta Feedback ──────────────────────────────────────
+export interface BetaFeedbackRow {
+  id: number;
+  public_number: number;
+  reporter_tg_id: number;
+  reporter_username: string | null;
+  reporter_display_name: string | null;
+  app: string;
+  app_version: string | null;
+  app_build: string | null;
+  testing: string;
+  feedback_types: string;
+  what_did_you_do: string;
+  what_happened: string;
+  expected_behavior: string | null;
+  overall_experience: BetaOverallExperienceId;
+  would_use_feature: BetaWouldUseId;
+  changes: string | null;
+  notes: string | null;
+  status: BetaStatusId;
+  channel_message_id: number | null;
+  discussion_message_id: number | null;
+  discussion_thread_id: number | null;
+  report_message_id: number | null;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface BetaFeedbackAttachmentRow {
+  id: number;
+  beta_feedback_id: number;
+  kind: "photo" | "video" | "document" | "animation";
+  telegram_file_id: string | null;
+  r2_key: string | null;
+  mime_type: string | null;
+  file_name: string | null;
+  size_bytes: number | null;
+  width: number | null;
+  height: number | null;
+  posted_message_id: number | null;
+  created_at: number;
+}
+
+export interface NewBetaFeedbackInput {
+  reporter_tg_id: number;
+  reporter_username?: string | null;
+  reporter_display_name?: string | null;
+  app: string;
+  app_version?: string | null;
+  app_build?: string | null;
+  testing: string;
+  feedback_types: BetaFeedbackTypeId[];
+  what_did_you_do: string;
+  what_happened: string;
+  expected_behavior?: string | null;
+  overall_experience: BetaOverallExperienceId;
+  would_use_feature: BetaWouldUseId;
+  changes?: string | null;
   notes?: string | null;
 }
 

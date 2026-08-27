@@ -7,6 +7,7 @@ import type {
   NewAttachmentInput,
 } from "./types";
 import type { StatusId } from "../bugs/constants";
+import type { BetaStatusId } from "../beta/constants";
 
 // ── Sequence ────────────────────────────────────────────────
 // Atomically increment the 'bug' sequence and return the new value.
@@ -434,6 +435,153 @@ export async function listIdeaAttachments(env: Env, ideaId: number): Promise<Ide
 
 export async function setIdeaAttachmentPostedMessage(env: Env, id: number, messageId: number): Promise<void> {
   await env.DB.prepare(`UPDATE idea_attachments SET posted_message_id=? WHERE id=?`)
+    .bind(messageId, id).run();
+}
+
+// ── Beta Feedback ──────────────────────────────────────
+import type { BetaFeedbackRow, BetaFeedbackAttachmentRow, NewBetaFeedbackInput } from "./types";
+
+export async function nextBetaFeedbackNumber(env: Env): Promise<number> {
+  const row = await env.DB.prepare(
+    `UPDATE sequences SET value = value + 1 WHERE name = 'beta' RETURNING value AS n`,
+  ).first<{ n: number }>();
+  if (!row) throw new Error("sequences.beta missing — run migrations/004_beta_feedback.sql");
+  return row.n;
+}
+
+export async function insertBetaFeedback(
+  env: Env,
+  input: NewBetaFeedbackInput,
+  publicNumber: number,
+): Promise<BetaFeedbackRow> {
+  const now = Math.floor(Date.now() / 1000);
+  const row = await env.DB.prepare(
+    `INSERT INTO beta_feedback (
+       public_number, reporter_tg_id, reporter_username, reporter_display_name,
+       app, app_version, app_build, testing, feedback_types,
+       what_did_you_do, what_happened, expected_behavior,
+       overall_experience, would_use_feature, changes, notes,
+       status, created_at, updated_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?)
+     RETURNING *`,
+  )
+    .bind(
+      publicNumber,
+      input.reporter_tg_id,
+      input.reporter_username ?? null,
+      input.reporter_display_name ?? null,
+      input.app,
+      input.app_version ?? null,
+      input.app_build ?? null,
+      input.testing,
+      JSON.stringify(input.feedback_types),
+      input.what_did_you_do,
+      input.what_happened,
+      input.expected_behavior ?? null,
+      input.overall_experience,
+      input.would_use_feature,
+      input.changes ?? null,
+      input.notes ?? null,
+      now,
+      now,
+    )
+    .first<BetaFeedbackRow>();
+  if (!row) throw new Error("insertBetaFeedback: no row");
+  return row;
+}
+
+export async function getBetaFeedback(env: Env, id: number): Promise<BetaFeedbackRow | null> {
+  return await env.DB.prepare(`SELECT * FROM beta_feedback WHERE id = ?`).bind(id).first<BetaFeedbackRow>();
+}
+
+export async function listBetaFeedbackByReporter(env: Env, tgUserId: number, limit = 50): Promise<BetaFeedbackRow[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT * FROM beta_feedback WHERE reporter_tg_id = ? ORDER BY id DESC LIMIT ?`,
+  )
+    .bind(tgUserId, limit)
+    .all<BetaFeedbackRow>();
+  return results ?? [];
+}
+
+export async function setBetaFeedbackTelegramLinkage(
+  env: Env,
+  betaFeedbackId: number,
+  channelMessageId: number,
+  discussionMessageId: number | null,
+  discussionThreadId: number | null,
+): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE beta_feedback SET channel_message_id=?, discussion_message_id=?, discussion_thread_id=?, updated_at=? WHERE id=?`,
+  )
+    .bind(channelMessageId, discussionMessageId, discussionThreadId, Math.floor(Date.now() / 1000), betaFeedbackId)
+    .run();
+}
+
+export async function setBetaFeedbackReportMessageId(
+  env: Env,
+  betaFeedbackId: number,
+  messageId: number,
+): Promise<void> {
+  await env.DB.prepare(`UPDATE beta_feedback SET report_message_id=?, updated_at=? WHERE id=?`)
+    .bind(messageId, Math.floor(Date.now() / 1000), betaFeedbackId)
+    .run();
+}
+
+export async function updateBetaFeedbackStatus(
+  env: Env,
+  betaFeedbackId: number,
+  toStatus: BetaStatusId,
+  changedBy: number | null,
+  note?: string | null,
+): Promise<{ from: BetaStatusId | null; to: BetaStatusId } | null> {
+  const cur = await getBetaFeedback(env, betaFeedbackId);
+  if (!cur) return null;
+  const from = cur.status;
+  const now = Math.floor(Date.now() / 1000);
+  await env.DB.batch([
+    env.DB.prepare(`UPDATE beta_feedback SET status=?, updated_at=? WHERE id=?`)
+      .bind(toStatus, now, betaFeedbackId),
+    env.DB.prepare(
+      `INSERT INTO beta_feedback_status_history (beta_feedback_id, from_status, to_status, changed_by, note, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+    ).bind(betaFeedbackId, from, toStatus, changedBy, note ?? null, now),
+  ]);
+  return { from, to: toStatus };
+}
+
+export async function insertBetaFeedbackAttachment(env: Env, a: {
+  beta_feedback_id: number; kind: BetaFeedbackAttachmentRow["kind"]; telegram_file_id?: string | null;
+  r2_key?: string | null; mime_type?: string | null; file_name?: string | null;
+  size_bytes?: number | null; width?: number | null; height?: number | null;
+}): Promise<BetaFeedbackAttachmentRow> {
+  const row = await env.DB.prepare(
+    `INSERT INTO beta_feedback_attachments (beta_feedback_id, kind, telegram_file_id, r2_key, mime_type, file_name, size_bytes, width, height)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?) RETURNING *`,
+  ).bind(
+    a.beta_feedback_id, a.kind, a.telegram_file_id ?? null, a.r2_key ?? null,
+    a.mime_type ?? null, a.file_name ?? null, a.size_bytes ?? null,
+    a.width ?? null, a.height ?? null,
+  ).first<BetaFeedbackAttachmentRow>();
+  if (!row) throw new Error("insertBetaFeedbackAttachment: no row");
+  return row;
+}
+
+export async function listBetaFeedbackAttachments(
+  env: Env,
+  betaFeedbackId: number,
+): Promise<BetaFeedbackAttachmentRow[]> {
+  const { results } = await env.DB.prepare(
+    `SELECT * FROM beta_feedback_attachments WHERE beta_feedback_id=? ORDER BY id ASC`,
+  ).bind(betaFeedbackId).all<BetaFeedbackAttachmentRow>();
+  return results ?? [];
+}
+
+export async function setBetaFeedbackAttachmentPostedMessage(
+  env: Env,
+  id: number,
+  messageId: number,
+): Promise<void> {
+  await env.DB.prepare(`UPDATE beta_feedback_attachments SET posted_message_id=? WHERE id=?`)
     .bind(messageId, id).run();
 }
 

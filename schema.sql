@@ -110,3 +110,68 @@ CREATE TABLE IF NOT EXISTS processed_updates (
   update_id  INTEGER PRIMARY KEY,
   created_at INTEGER NOT NULL DEFAULT (unixepoch())
 );
+
+-- Beta Feedback submissions. Mirrors the ideas table shape: independent
+-- public numbering, Telegram linkage, attachments, and status history.
+CREATE TABLE IF NOT EXISTS beta_feedback (
+  id                       INTEGER PRIMARY KEY AUTOINCREMENT,
+  public_number            INTEGER NOT NULL UNIQUE,
+  reporter_tg_id           INTEGER NOT NULL,
+  reporter_username        TEXT,
+  reporter_display_name    TEXT,
+
+  app                      TEXT NOT NULL,
+  app_version              TEXT,
+  app_build                TEXT,
+  testing                  TEXT NOT NULL,
+  feedback_types           TEXT NOT NULL,
+  what_did_you_do          TEXT NOT NULL,
+  what_happened            TEXT NOT NULL,
+  expected_behavior        TEXT,
+  overall_experience       TEXT NOT NULL,
+  would_use_feature        TEXT NOT NULL,
+  changes                  TEXT,
+  notes                    TEXT,
+
+  status                   TEXT NOT NULL DEFAULT 'new',
+
+  channel_message_id       INTEGER,
+  discussion_message_id    INTEGER,
+  discussion_thread_id     INTEGER,
+  report_message_id        INTEGER,
+
+  created_at               INTEGER NOT NULL DEFAULT (unixepoch()),
+  updated_at               INTEGER NOT NULL DEFAULT (unixepoch())
+);
+CREATE INDEX IF NOT EXISTS idx_beta_feedback_reporter ON beta_feedback(reporter_tg_id);
+CREATE INDEX IF NOT EXISTS idx_beta_feedback_status   ON beta_feedback(status);
+CREATE INDEX IF NOT EXISTS idx_beta_feedback_app      ON beta_feedback(app);
+
+INSERT OR IGNORE INTO sequences (name, value) VALUES ('beta', 0);
+
+CREATE TABLE IF NOT EXISTS beta_feedback_attachments (
+  id             INTEGER PRIMARY KEY AUTOINCREMENT,
+  beta_feedback_id INTEGER NOT NULL REFERENCES beta_feedback(id) ON DELETE CASCADE,
+  kind           TEXT NOT NULL,
+  telegram_file_id TEXT,
+  r2_key         TEXT,
+  mime_type      TEXT,
+  file_name      TEXT,
+  size_bytes     INTEGER,
+  width          INTEGER,
+  height         INTEGER,
+  posted_message_id INTEGER,
+  created_at     INTEGER NOT NULL DEFAULT (unixepoch())
+);
+CREATE INDEX IF NOT EXISTS idx_beta_feedback_attachments_feedback ON beta_feedback_attachments(beta_feedback_id);
+
+CREATE TABLE IF NOT EXISTS beta_feedback_status_history (
+  id          INTEGER PRIMARY KEY AUTOINCREMENT,
+  beta_feedback_id INTEGER NOT NULL REFERENCES beta_feedback(id) ON DELETE CASCADE,
+  from_status TEXT,
+  to_status   TEXT NOT NULL,
+  changed_by  INTEGER,
+  note        TEXT,
+  created_at  INTEGER NOT NULL DEFAULT (unixepoch())
+);
+CREATE INDEX IF NOT EXISTS idx_beta_feedback_status_history_feedback ON beta_feedback_status_history(beta_feedback_id);

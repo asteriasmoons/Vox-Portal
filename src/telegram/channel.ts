@@ -500,3 +500,188 @@ export async function recordIdeaDiscussionMirror(
     .bind(discussionMessageId, discussionMessageId, Math.floor(Date.now() / 1000), channelMessageId)
     .run();
 }
+
+// ──────────────────────────────────────────────────────────
+// Beta Feedback equivalents. Mirrors the Feature Idea helpers: separate D1
+// table lookups, same channel/discussion posting mechanics.
+// ──────────────────────────────────────────────────────────
+import type { BetaFeedbackRow } from "../db/types";
+import {
+  setBetaFeedbackReportMessageId,
+  setBetaFeedbackTelegramLinkage,
+} from "../db/queries";
+import { renderBetaFeedbackChannelTicket } from "../beta/formatting";
+import { buildBetaFeedbackRichMessage } from "./richmessage";
+
+export async function postBetaFeedbackChannelTicket(env: Env, row: BetaFeedbackRow): Promise<number> {
+  const msg = await sendMessage(env, channelId(env), renderBetaFeedbackChannelTicket(row), {
+    parse_mode: "HTML",
+    disable_web_page_preview: true,
+  });
+  await setBetaFeedbackTelegramLinkage(env, row.id, msg.message_id, null, null);
+  return msg.message_id;
+}
+
+export async function refreshBetaFeedbackChannelTicket(env: Env, row: BetaFeedbackRow): Promise<void> {
+  if (!row.channel_message_id) return;
+  try {
+    await editMessageText(env, channelId(env), row.channel_message_id, renderBetaFeedbackChannelTicket(row), {
+      parse_mode: "HTML",
+    });
+  } catch (e) {
+    log.warn("beta_feedback_channel_ticket_refresh_failed", { betaFeedbackId: row.id, err: String(e) });
+  }
+}
+
+export async function postBetaFeedbackRichReportToThread(
+  env: Env,
+  row: BetaFeedbackRow,
+): Promise<TelegramMessage | null> {
+  if (!row.discussion_thread_id) return null;
+  const richMessage = buildBetaFeedbackRichMessage(row);
+  try {
+    const mirrorId = row.discussion_thread_id;
+    const msg = await sendRichMessage(env, discussionChatId(env), richMessage, {
+      message_thread_id: mirrorId,
+      reply_parameters: { message_id: mirrorId, allow_sending_without_reply: true },
+    });
+    await setBetaFeedbackReportMessageId(env, row.id, msg.message_id);
+    return msg;
+  } catch (e) {
+    log.error("beta_feedback_rich_report_post_failed", e, { betaFeedbackId: row.id });
+    return null;
+  }
+}
+
+export async function postBetaFeedbackReportToThread(
+  env: Env,
+  row: BetaFeedbackRow,
+  mirrorMessageIdMaybe: number | null,
+): Promise<TelegramMessage | null> {
+  const mirrorMessageId = mirrorMessageIdMaybe ?? (await waitForBetaFeedbackDiscussionMirror(env, row.channel_message_id!));
+  if (!mirrorMessageId) {
+    log.warn("beta_feedback_discussion_mirror_unresolved_for_report", { betaFeedbackId: row.id });
+    return null;
+  }
+  const withThread: BetaFeedbackRow = row.discussion_thread_id
+    ? row
+    : { ...row, discussion_thread_id: mirrorMessageId };
+  return await postBetaFeedbackRichReportToThread(env, withThread);
+}
+
+export async function refreshBetaFeedbackRichReport(env: Env, row: BetaFeedbackRow): Promise<void> {
+  if (!row.report_message_id) return;
+  try {
+    await editRichMessage(env, discussionChatId(env), row.report_message_id, buildBetaFeedbackRichMessage(row));
+  } catch (e) {
+    log.warn("beta_feedback_rich_report_refresh_failed", { betaFeedbackId: row.id, err: String(e) });
+  }
+}
+
+export async function postBetaFeedbackTelegramAttachmentToThread(
+  env: Env,
+  row: BetaFeedbackRow,
+  kind: "photo" | "video" | "document" | "animation",
+  fileId: string,
+  caption?: string,
+): Promise<number | null> {
+  if (!row.discussion_message_id) return null;
+  const chat = discussionChatId(env);
+  const threadId = row.discussion_thread_id ?? row.discussion_message_id;
+  const opts = {
+    message_thread_id: threadId,
+    reply_parameters: { message_id: row.discussion_message_id },
+    caption,
+    parse_mode: "HTML" as const,
+  };
+  let msg: TelegramMessage;
+  switch (kind) {
+    case "photo":     msg = await sendPhoto(env, chat, fileId, opts); break;
+    case "video":     msg = await sendVideo(env, chat, fileId, opts); break;
+    case "animation": msg = await tgCall<TelegramMessage>(env, "sendAnimation", { chat_id: chat, animation: fileId, ...opts }); break;
+    case "document":
+    default:          msg = await sendDocument(env, chat, fileId, opts);
+  }
+  return msg.message_id;
+}
+
+export async function postBetaFeedbackR2AttachmentToThread(
+  env: Env,
+  row: BetaFeedbackRow,
+  bytes: ArrayBuffer,
+  mime: string,
+  fileName: string,
+): Promise<number | null> {
+  if (!row.discussion_message_id) return null;
+  const chat = discussionChatId(env);
+  const threadId = row.discussion_thread_id ?? row.discussion_message_id;
+  const form = new FormData();
+  form.append("chat_id", String(chat));
+  form.append("message_thread_id", String(threadId));
+  form.append("reply_parameters", JSON.stringify({ message_id: row.discussion_message_id }));
+  const blob = new Blob([bytes], { type: mime });
+  let method = "sendDocument"; let field = "document";
+  if (mime.startsWith("image/") && mime !== "image/gif") { method = "sendPhoto"; field = "photo"; }
+  else if (mime.startsWith("video/")) { method = "sendVideo"; field = "video"; }
+  else if (mime === "image/gif")      { method = "sendAnimation"; field = "animation"; }
+  form.append(field, blob, fileName);
+  try {
+    const msg = await tgCallMultipart<TelegramMessage>(env, method, form);
+    return msg.message_id;
+  } catch (e) {
+    if (!(e instanceof TelegramError) || method === "sendDocument" || e.error_code !== 400) throw e;
+    log.warn("beta_feedback_attachment_media_fallback_to_document", {
+      betaFeedbackId: row.id,
+      fileName,
+      mime,
+      method,
+      reason: e.description,
+    });
+    const fallback = new FormData();
+    fallback.append("chat_id", String(chat));
+    fallback.append("message_thread_id", String(threadId));
+    fallback.append("reply_parameters", JSON.stringify({ message_id: row.discussion_message_id }));
+    fallback.append("document", blob, fileName);
+    const msg = await tgCallMultipart<TelegramMessage>(env, "sendDocument", fallback);
+    return msg.message_id;
+  }
+}
+
+export async function waitForBetaFeedbackDiscussionMirror(
+  env: Env,
+  channelMessageId: number,
+  timeoutMs = 8000,
+): Promise<number | null> {
+  const key = `mirror:${channelMessageId}`;
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const cached = await env.SESSIONS.get(key);
+    if (cached) {
+      const n = Number(cached);
+      if (Number.isFinite(n)) return n;
+    }
+    const persisted = await env.DB.prepare(
+      `SELECT discussion_message_id FROM beta_feedback
+       WHERE channel_message_id = ? AND discussion_message_id IS NOT NULL
+       LIMIT 1`,
+    )
+      .bind(channelMessageId)
+      .first<{ discussion_message_id: number }>();
+    if (persisted?.discussion_message_id) return persisted.discussion_message_id;
+    await new Promise((r) => setTimeout(r, 300));
+  }
+  return null;
+}
+
+export async function recordBetaFeedbackDiscussionMirror(
+  env: Env,
+  channelMessageId: number,
+  discussionMessageId: number,
+): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE beta_feedback SET discussion_message_id = ?, discussion_thread_id = ?, updated_at = ?
+     WHERE channel_message_id = ?`,
+  )
+    .bind(discussionMessageId, discussionMessageId, Math.floor(Date.now() / 1000), channelMessageId)
+    .run();
+}

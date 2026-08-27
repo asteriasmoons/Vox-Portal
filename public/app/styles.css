@@ -154,6 +154,47 @@ select {
 textarea { resize: vertical; min-height: 84px; }
 input:focus, textarea:focus, select:focus { border-color: var(--accent); background: rgba(0,0,0,0.5); }
 
+fieldset.check-options {
+  border: 0;
+  padding: 0;
+  margin: 0 0 14px;
+}
+fieldset.check-options legend {
+  color: var(--subtext);
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0 0 8px;
+}
+.check-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.check-chip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  margin: 0;
+  padding: 10px 12px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 12px;
+  background: rgba(0,0,0,0.35);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 800;
+}
+.check-chip input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.check-chip:has(input:checked) {
+  border-color: var(--accent);
+  background: rgba(98, 70, 147, 0.24);
+}
+@media (max-width: 420px) { .check-grid { grid-template-columns: 1fr; } }
+
 .steps-field { margin: 0 0 14px; }
 .steps-label { color: var(--subtext); font-size: 13px; font-weight: 700; margin-bottom: 6px; }
 .steps-list { display: flex; flex-direction: column; gap: 10px; }
@@ -429,6 +470,7 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); backgro
 }
 .type-badge-bug  { color: #a58ad9; background: rgba(98, 70, 147, 0.14); border-color: rgba(98, 70, 147, 0.40); }
 .type-badge-idea { color: #c99ac0; background: rgba(90, 46, 80, 0.18);  border-color: rgba(90, 46, 80, 0.45); }
+.type-badge-beta { color: #77e0d4; background: rgba(119, 224, 212, 0.12); border-color: rgba(119, 224, 212, 0.36); }
 /* Recolor the monochrome icons to match each badge's text color. */
 .type-badge-bug  .type-badge-glyph {
   /* Approximation of #a58ad9 via filter cascade — good enough for a 12px icon. */
@@ -437,6 +479,9 @@ input:focus, textarea:focus, select:focus { border-color: var(--accent); backgro
 .type-badge-idea .type-badge-glyph {
   /* Approximation of #c99ac0 (plum). */
   filter: brightness(0) saturate(100%) invert(72%) sepia(15%) saturate(700%) hue-rotate(280deg) brightness(103%) contrast(95%);
+}
+.type-badge-beta .type-badge-glyph {
+  filter: brightness(0) saturate(100%) invert(82%) sepia(27%) saturate(642%) hue-rotate(123deg) brightness(98%) contrast(89%);
 }
 
 /* Delivery-state banner + inline resend chip on failed history rows. */

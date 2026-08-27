@@ -8,7 +8,7 @@ import { handleCommand, ensureCommandsRegistered } from "./commands";
 import { handleWizardMessage, handleWizardCallback, getSession } from "./conversation";
 import { handleAdminCallback, handleAdminGroupCommand } from "./admin";
 import { handleChatJoinRequest, handleJoinApprovalPasswordMessage } from "./joinApprovals";
-import { recordDiscussionMirror, recordIdeaDiscussionMirror } from "./channel";
+import { recordBetaFeedbackDiscussionMirror, recordDiscussionMirror, recordIdeaDiscussionMirror } from "./channel";
 import { claimUpdateId } from "../db/queries";
 import { log } from "../util/log";
 import type { TelegramMessage } from "./api";
@@ -84,6 +84,11 @@ async function onMessage(env: Env, msg: TelegramMessage) {
         msg.message_id,
       );
       await recordIdeaDiscussionMirror(
+        env,
+        msg.forward_origin.message_id,
+        msg.message_id,
+      );
+      await recordBetaFeedbackDiscussionMirror(
         env,
         msg.forward_origin.message_id,
         msg.message_id,

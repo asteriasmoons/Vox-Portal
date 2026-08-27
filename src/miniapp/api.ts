@@ -6,11 +6,14 @@ import type { Env } from "../config";
 import { validateInitData } from "../telegram/initdata";
 import { createBug, resendBugToTelegram, type IncomingAttachment } from "../bugs/service";
 import { createIdea, resendIdeaToTelegram, type IncomingIdeaAttachment } from "../ideas/service";
+import { createBetaFeedback, resendBetaFeedbackToTelegram, type IncomingBetaFeedbackAttachment } from "../beta/service";
 import { listIdeasByReporter, getIdea, listIdeaAttachments, setIdeaAttachmentPostedMessage, setIdeaTelegramLinkage } from "../db/queries";
 import { ideaPublicId } from "../ideas/formatting";
-import { postChannelTicket, postReportToThread, postR2AttachmentToThread, postTelegramAttachmentToThread, waitForDiscussionMirror, postIdeaChannelTicket, postIdeaReportToThread, postIdeaR2AttachmentToThread, postIdeaTelegramAttachmentToThread, waitForIdeaDiscussionMirror } from "../telegram/channel";
+import { betaFeedbackPublicId } from "../beta/formatting";
+import { postChannelTicket, postReportToThread, postR2AttachmentToThread, postTelegramAttachmentToThread, waitForDiscussionMirror, postIdeaChannelTicket, postIdeaReportToThread, postIdeaR2AttachmentToThread, postIdeaTelegramAttachmentToThread, waitForIdeaDiscussionMirror, postBetaFeedbackChannelTicket, postBetaFeedbackReportToThread, postBetaFeedbackR2AttachmentToThread, postBetaFeedbackTelegramAttachmentToThread, waitForBetaFeedbackDiscussionMirror } from "../telegram/channel";
 import { APPS, CATEGORIES, SEVERITIES, FREQUENCIES, CATEGORY_IDS, SEVERITY_IDS } from "../bugs/constants";
-import { listBugsByReporter, getBug, listAttachments, setAttachmentPostedMessage, setBugTelegramLinkage } from "../db/queries";
+import { BETA_FEEDBACK_TYPE_IDS, BETA_FEEDBACK_TYPES, BETA_OVERALL_EXPERIENCE_IDS, BETA_OVERALL_EXPERIENCES, BETA_WOULD_USE_IDS, BETA_WOULD_USE_OPTIONS } from "../beta/constants";
+import { listBugsByReporter, getBug, listAttachments, setAttachmentPostedMessage, setBugTelegramLinkage, listBetaFeedbackByReporter, getBetaFeedback, listBetaFeedbackAttachments, setBetaFeedbackAttachmentPostedMessage, setBetaFeedbackTelegramLinkage } from "../db/queries";
 import { publicIdOf } from "../bugs/formatting";
 import { log } from "../util/log";
 
@@ -38,6 +41,9 @@ export async function handleConfig(): Promise<Response> {
     categories: CATEGORIES,
     severities: SEVERITIES,
     frequencies: FREQUENCIES,
+    beta_feedback_types: BETA_FEEDBACK_TYPES,
+    beta_overall_experiences: BETA_OVERALL_EXPERIENCES,
+    beta_would_use_options: BETA_WOULD_USE_OPTIONS,
   });
 }
 
@@ -266,6 +272,102 @@ export async function handleResubmitIdea(env: Env, req: Request, id: number): Pr
   return json({ ok: true });
 }
 
+// GET /api/mybeta-feedback/:id — full detail of one beta feedback submission.
+export async function handleMyBetaFeedbackDetail(env: Env, req: Request, id: number): Promise<Response> {
+  const initData = req.headers.get("x-telegram-init-data") ?? "";
+  let user;
+  try { ({ user } = await validateInitData(env, initData)); }
+  catch { return json({ ok: false, error: "auth" }, { status: 401 }); }
+  const row = await getBetaFeedback(env, id);
+  if (!row || row.reporter_tg_id !== user.id) return json({ ok: false, error: "not_found" }, { status: 404 });
+  const atts = await listBetaFeedbackAttachments(env, row.id);
+  return json({
+    ok: true,
+    beta_feedback: { ...row, public_id: betaFeedbackPublicId(row) },
+    attachments: atts.map((a) => ({
+      id: a.id,
+      kind: a.kind,
+      file_name: a.file_name,
+      mime_type: a.mime_type,
+      size_bytes: a.size_bytes,
+      posted_message_id: a.posted_message_id,
+    })),
+  });
+}
+
+// POST /api/mybeta-feedback/:id/resubmit — resend this beta feedback's Telegram delivery.
+export async function handleResubmitBetaFeedback(env: Env, req: Request, id: number): Promise<Response> {
+  const initData = req.headers.get("x-telegram-init-data") ?? "";
+  let user;
+  try { ({ user } = await validateInitData(env, initData)); }
+  catch { return json({ ok: false, error: "auth" }, { status: 401 }); }
+
+  let row = await getBetaFeedback(env, id);
+  if (!row || row.reporter_tg_id !== user.id) return json({ ok: false, error: "not_found" }, { status: 404 });
+
+  if (!row.channel_message_id) {
+    try {
+      const { row: fresh, telegram } = await resendBetaFeedbackToTelegram(env, id);
+      return json({
+        ok: true,
+        public_id: betaFeedbackPublicId(fresh),
+        telegram,
+        report_posted: !!fresh.report_message_id,
+      });
+    } catch (e) {
+      log.error("resubmit_beta_feedback_from_scratch_failed", e, { betaFeedbackId: id });
+      return json({ ok: false, error: "server" }, { status: 500 });
+    }
+  }
+
+  let mirrorId = row.discussion_message_id ?? await waitForBetaFeedbackDiscussionMirror(env, row.channel_message_id, 3000);
+  if (!mirrorId) {
+    const replacementChannelMessageId = await postBetaFeedbackChannelTicket(env, row);
+    mirrorId = await waitForBetaFeedbackDiscussionMirror(env, replacementChannelMessageId, 8000);
+    if (!mirrorId) return json({ ok: false, error: "discussion_mirror_missing_after_repost" }, { status: 409 });
+    await setBetaFeedbackTelegramLinkage(env, row.id, replacementChannelMessageId, mirrorId, mirrorId);
+    row = { ...row, channel_message_id: replacementChannelMessageId, discussion_message_id: mirrorId, discussion_thread_id: mirrorId };
+  } else if (!row.discussion_message_id) {
+    await setBetaFeedbackTelegramLinkage(env, row.id, row.channel_message_id, mirrorId, mirrorId);
+    row = { ...row, discussion_message_id: mirrorId, discussion_thread_id: mirrorId };
+  } else if (!row.discussion_thread_id) {
+    await setBetaFeedbackTelegramLinkage(env, row.id, row.channel_message_id, row.discussion_message_id, row.discussion_message_id);
+    row = { ...row, discussion_thread_id: row.discussion_message_id };
+  }
+
+  await postBetaFeedbackReportToThread(env, row, mirrorId);
+  const atts = await listBetaFeedbackAttachments(env, row.id);
+  for (const a of atts) {
+    if (a.posted_message_id) continue;
+    try {
+      let posted: number | null = null;
+      if (a.r2_key) {
+        const obj = await env.ATTACHMENTS.get(a.r2_key);
+        if (!obj) continue;
+        posted = await postBetaFeedbackR2AttachmentToThread(
+          env,
+          row,
+          await obj.arrayBuffer(),
+          a.mime_type ?? "application/octet-stream",
+          a.file_name ?? "attachment",
+        );
+      } else if (a.telegram_file_id) {
+        posted = await postBetaFeedbackTelegramAttachmentToThread(env, row, a.kind, a.telegram_file_id);
+      }
+      if (posted) await setBetaFeedbackAttachmentPostedMessage(env, a.id, posted);
+    } catch (e) {
+      log.error("resubmit_beta_feedback_attachment_post_failed_nonfatal", e, {
+        betaFeedbackId: row.id,
+        attachmentId: a.id,
+        kind: a.kind,
+        mime: a.mime_type,
+        fileName: a.file_name,
+      });
+    }
+  }
+  return json({ ok: true });
+}
+
 // POST /api/submit-idea — creates a Feature Idea (Telegram + GitHub Discussion).
 export async function handleSubmitIdea(env: Env, req: Request): Promise<Response> {
   const initData = req.headers.get("x-telegram-init-data") ?? "";
@@ -343,6 +445,111 @@ export async function handleSubmitIdea(env: Env, req: Request): Promise<Response
   }
 }
 
+// POST /api/submit-beta-feedback — creates Beta Feedback (Telegram only).
+export async function handleSubmitBetaFeedback(env: Env, req: Request): Promise<Response> {
+  const initData = req.headers.get("x-telegram-init-data") ?? "";
+  let user;
+  try {
+    ({ user } = await validateInitData(env, initData));
+  } catch { return json({ ok: false, error: "auth" }, { status: 401 }); }
+
+  let payload: BetaFeedbackSubmitPayload;
+  try { payload = (await req.json()) as BetaFeedbackSubmitPayload; }
+  catch { return badRequest("invalid JSON"); }
+
+  const errs = validateBetaFeedbackPayload(payload);
+  if (errs.length) return badRequest(errs.join("; "));
+
+  const attachments: IncomingBetaFeedbackAttachment[] = [];
+  for (const a of payload.attachments ?? []) {
+    if (attachments.length >= MAX_ATTACHMENTS) break;
+    const obj = await env.ATTACHMENTS.get(a.key);
+    if (!obj) continue;
+    const bytes = await obj.arrayBuffer();
+    if (bytes.byteLength > MAX_ATTACHMENT_BYTES) continue;
+    attachments.push({
+      source: "r2",
+      kind: kindOf(a.mime),
+      r2_key: a.key,
+      bytes,
+      mime: a.mime || obj.httpMetadata?.contentType || "application/octet-stream",
+      file_name: a.name || "attachment",
+      size_bytes: bytes.byteLength,
+    });
+  }
+
+  try {
+    const row = await createBetaFeedback(
+      env,
+      {
+        reporter_tg_id: user.id,
+        reporter_username: user.username ?? null,
+        reporter_display_name: [user.first_name, user.last_name].filter(Boolean).join(" ") || null,
+        app: payload.app.trim(),
+        app_version: nz(payload.app_version),
+        app_build: nz(payload.app_build),
+        testing: payload.testing.trim(),
+        feedback_types: payload.feedback_types as any,
+        what_did_you_do: payload.what_did_you_do.trim(),
+        what_happened: payload.what_happened.trim(),
+        expected_behavior: nz(payload.expected_behavior),
+        overall_experience: payload.overall_experience as any,
+        would_use_feature: payload.would_use_feature as any,
+        changes: nz(payload.changes),
+        notes: nz(payload.notes),
+      },
+      attachments,
+    );
+    return json({
+      ok: true,
+      public_id: betaFeedbackPublicId(row),
+      id: row.id,
+      telegram: { status: "sent" as const },
+    });
+  } catch (e) {
+    log.error("miniapp_submit_beta_feedback_failed", e, { user_id: user.id });
+    return json({ ok: false, error: "server" }, { status: 500 });
+  }
+}
+
+interface BetaFeedbackSubmitPayload {
+  app: string;
+  app_version?: string;
+  app_build?: string;
+  testing: string;
+  feedback_types: string[];
+  what_did_you_do: string;
+  what_happened: string;
+  expected_behavior?: string;
+  overall_experience: string;
+  would_use_feature: string;
+  changes?: string;
+  notes?: string;
+  attachments?: { key: string; name: string; mime: string; size?: number }[];
+  submit_token?: string;
+}
+
+function validateBetaFeedbackPayload(p: BetaFeedbackSubmitPayload): string[] {
+  const errs: string[] = [];
+  if (!p || typeof p !== "object") return ["invalid body"];
+  if (!p.app?.trim()) errs.push("app is required");
+  if (!p.testing?.trim()) errs.push("testing is required");
+  if (!Array.isArray(p.feedback_types) || !p.feedback_types.length) errs.push("feedback_types is required");
+  else if (p.feedback_types.some((id) => !(BETA_FEEDBACK_TYPE_IDS as readonly string[]).includes(id))) {
+    errs.push("feedback_types invalid");
+  }
+  if (!p.what_did_you_do?.trim()) errs.push("what_did_you_do is required");
+  if (!p.what_happened?.trim()) errs.push("what_happened is required");
+  if (!(BETA_OVERALL_EXPERIENCE_IDS as readonly string[]).includes(p.overall_experience)) errs.push("overall_experience invalid");
+  if (!(BETA_WOULD_USE_IDS as readonly string[]).includes(p.would_use_feature)) errs.push("would_use_feature invalid");
+  for (const k of ["testing", "what_did_you_do", "what_happened", "expected_behavior", "changes", "notes"] as const) {
+    const v = p[k];
+    if (v && v.length > MAX_TEXT_LEN) errs.push(`${k} too long`);
+  }
+  if ((p.attachments?.length ?? 0) > MAX_ATTACHMENTS) errs.push("too many attachments");
+  return errs;
+}
+
 interface IdeaSubmitPayload {
   app: string;
   title: string;
@@ -379,9 +586,10 @@ export async function handleMyBugs(env: Env, req: Request): Promise<Response> {
   } catch {
     return json({ ok: false, error: "auth" }, { status: 401 });
   }
-  const [bugRows, ideaRows] = await Promise.all([
+  const [bugRows, ideaRows, betaRows] = await Promise.all([
     listBugsByReporter(env, user.id, 50),
     listIdeasByReporter(env, user.id, 50),
+    listBetaFeedbackByReporter(env, user.id, 50),
   ]);
   return json({
     ok: true,
@@ -412,6 +620,19 @@ export async function handleMyBugs(env: Env, req: Request): Promise<Response> {
         report_posted: !!r.report_message_id,
         github_created: !!r.github_comment_id,
         github_url: r.github_comment_url,
+      })),
+      ...betaRows.map((r) => ({
+        type: "beta" as const,
+        id: r.id,
+        public_id: betaFeedbackPublicId(r),
+        title: r.testing,
+        app: r.app,
+        status: r.status,
+        created_at: r.created_at,
+        telegram_posted: !!r.channel_message_id,
+        report_posted: !!r.report_message_id,
+        github_created: false,
+        github_url: null,
       })),
     ].sort((a, b) => b.created_at - a.created_at),
     // Legacy shape kept for backward compat with any older cached JS.

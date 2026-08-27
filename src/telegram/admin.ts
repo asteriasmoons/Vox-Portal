@@ -84,9 +84,12 @@ async function takeEphemeral(env: Env, bugId: number, tgId: number): Promise<num
 export async function handleAdminCallback(ctx: CallbackCtx): Promise<boolean> {
   const { env, data, fromTgId, callbackQueryId, chatId, messageId } = ctx;
 
-  // Feature Idea callbacks — separate grammar, separate handler.
+  // Feature Idea and Beta Feedback callbacks — separate grammars, separate handlers.
   if (data.startsWith("idea:")) {
     return await handleIdeaCallback(ctx);
+  }
+  if (data.startsWith("beta:")) {
+    return await handleBetaFeedbackCallback(ctx);
   }
 
   if (data === "noop") {
@@ -345,6 +348,39 @@ async function syncIdeaStatusToGitHub(env: Env, idea: import("../db/types").Idea
     idea.decision_reason ? `${idea.decision_reason}\n\n` : ""
   }_Updated through the Voxiverse Telegram Mini App._`;
   await addDiscussionComment(env, target, body);
+}
+
+// ── Beta Feedback callback handler ─────────────────────
+// Grammar: beta:act:<betaFeedbackId>:status:<statusId>
+async function handleBetaFeedbackCallback(ctx: CallbackCtx): Promise<boolean> {
+  const { env, data, fromTgId, callbackQueryId } = ctx;
+  if (!isAdmin(env, fromTgId)) {
+    await answerCallbackQuery(env, callbackQueryId, "Not authorized.", true);
+    return true;
+  }
+  const parts = data.split(":");
+  const betaFeedbackId = Number(parts[2]);
+  if (!Number.isFinite(betaFeedbackId)) return false;
+
+  const verb = parts[3];
+  const value = parts[4];
+  if (verb !== "status") {
+    await answerCallbackQuery(env, callbackQueryId, "Unknown beta feedback action.", true);
+    return true;
+  }
+  const { BETA_STATUS_IDS, betaStatusMeta } = await import("../beta/constants");
+  if (!(BETA_STATUS_IDS as readonly string[]).includes(value)) {
+    await answerCallbackQuery(env, callbackQueryId, "Unknown status.", true);
+    return true;
+  }
+  const { changeBetaFeedbackStatus } = await import("../beta/service");
+  const updated = await changeBetaFeedbackStatus(env, betaFeedbackId, value as any, fromTgId);
+  if (!updated) {
+    await answerCallbackQuery(env, callbackQueryId, "Beta feedback not found.", true);
+    return true;
+  }
+  await answerCallbackQuery(env, callbackQueryId, `Beta Feedback → ${betaStatusMeta(value).label}`);
+  return true;
 }
 
 // ── Admin commands typed inside a bug's discussion thread ─

@@ -7,6 +7,7 @@ import { initSubmit, resetForm } from "./submit";
 import { loadHistory, initHistoryDetailBack } from "./history";
 import { initSteps } from "./steps";
 import { initIdeaPage } from "./idea";
+import { initBetaFeedbackPage } from "./beta";
 import { $ } from "./dom";
 import { showTopError, clearErrors } from "./ui";
 
@@ -33,6 +34,10 @@ if (page === "create-bug") {
 
 if (page === "create-idea") {
   void initIdeaPage();
+}
+
+if (page === "create-beta-feedback") {
+  void initBetaFeedbackPage();
 }
 
 if (page === "history") {

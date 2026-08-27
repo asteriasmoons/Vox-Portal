@@ -1,0 +1,126 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Send Beta Feedback · Vox Bugs</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body data-page="create-beta-feedback">
+    <div id="tg-safe-top" aria-hidden="true"></div>
+    <main id="app">
+      <header class="hdr hdr-with-back">
+        <div class="hdr-titles">
+          <h1 class="page-title">Send Beta Feedback</h1>
+          <p class="sub">Tell us what worked, what didn't, and what you noticed.</p>
+        </div>
+        <a class="back-btn" href="./create.html" aria-label="Back to Create">Back</a>
+      </header>
+
+      <form id="beta-feedback-form" novalidate>
+        <section class="card">
+          <h2>App</h2>
+          <label>App <span class="req">*</span>
+            <select name="app" required id="beta-app-select">
+              <option value="">Choose an app…</option>
+            </select>
+          </label>
+          <div class="row two">
+            <label>Version
+              <input name="app_version" autocomplete="off" placeholder="1.2.0" />
+            </label>
+            <label>Build
+              <input name="app_build" autocomplete="off" placeholder="142" />
+            </label>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Beta Feedback</h2>
+          <label>What Were You Testing? <span class="req">*</span>
+            <textarea name="testing" required rows="3" placeholder="Which feature, flow, or beta build did you test?"></textarea>
+          </label>
+          <fieldset class="check-options">
+            <legend>Feedback Type <span class="req">*</span></legend>
+            <div id="beta-feedback-type-options" class="check-grid"></div>
+          </fieldset>
+          <label>What Did You Do? <span class="req">*</span>
+            <textarea name="what_did_you_do" required rows="4" placeholder="Describe the actions you took."></textarea>
+          </label>
+          <label>What Happened? <span class="req">*</span>
+            <textarea name="what_happened" required rows="4" placeholder="Describe what you saw or felt while testing."></textarea>
+          </label>
+          <label>What Did You Expect?
+            <textarea name="expected_behavior" rows="3" placeholder="Optional: what did you expect instead?"></textarea>
+          </label>
+          <label>Overall Experience <span class="req">*</span>
+            <select name="overall_experience" required id="beta-overall-select">
+              <option value="">Choose an experience…</option>
+            </select>
+          </label>
+          <label>Would You Use This Feature? <span class="req">*</span>
+            <select name="would_use_feature" required id="beta-would-use-select">
+              <option value="">Choose an option…</option>
+            </select>
+          </label>
+          <label>Anything You'd Change?
+            <textarea name="changes" rows="3" placeholder="Optional: what would make this better?"></textarea>
+          </label>
+          <label>Additional Notes
+            <textarea name="notes" rows="3" placeholder="Optional: anything else worth mentioning."></textarea>
+          </label>
+        </section>
+
+        <section class="card">
+          <h2>Attachments</h2>
+          <p class="hint">Screenshots, recordings, or files. Up to 10, 20 MB each.</p>
+          <label class="filepick">
+            <input type="file" id="beta-file-input" multiple
+                   accept="image/*,video/*,.pdf,.txt,.log,.json,.zip" />
+            <span>+ Add files</span>
+          </label>
+          <ul id="beta-file-list" class="files"></ul>
+        </section>
+
+        <button type="submit" id="beta-submit-btn" class="primary">Send feedback</button>
+      </form>
+
+      <div id="beta-success" class="success hidden">
+        <div class="check">
+          <svg viewBox="0 0 24 24" width="34" height="34" aria-hidden="true">
+            <path d="M5 12.5l4.5 4.5L20 6" fill="none" stroke="currentColor"
+              stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <p class="success-kicker">FEEDBACK RECEIVED</p>
+        <h2 class="page-title">Beta feedback sent</h2>
+        <p class="success-copy">Your feedback was saved as <b id="beta-success-id"></b>.</p>
+        <ul id="beta-success-destinations" class="destinations"></ul>
+        <p class="success-note">You'll get updates in Telegram when it's reviewed.</p>
+        <div class="success-actions">
+          <a class="primary nav-link" href="./create-beta-feedback.html">Send another</a>
+          <a class="ghost nav-link" href="./history.html">View my submissions</a>
+          <a class="success-home-link" href="./index.html">Back to home</a>
+        </div>
+      </div>
+    </main>
+
+    <nav id="nav" aria-label="Primary">
+      <a class="nav-btn" href="./index.html" style="--icon:url(/icons/home.svg)" aria-label="Home">
+        <img class="nav-glyph" src="/icons/home.svg" alt="" />
+        <span class="nav-label">Home</span>
+      </a>
+      <a class="nav-btn active" href="./create.html" style="--icon:url(/icons/create.svg)" aria-label="Create" aria-current="page">
+        <img class="nav-glyph" src="/icons/create.svg" alt="" />
+        <span class="nav-label">Create</span>
+      </a>
+      <a class="nav-btn" href="./history.html" style="--icon:url(/icons/clockbook.svg)" aria-label="History">
+        <img class="nav-glyph" src="/icons/clockbook.svg" alt="" />
+        <span class="nav-label">History</span>
+      </a>
+    </nav>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

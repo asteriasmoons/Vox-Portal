@@ -11,6 +11,9 @@ export interface ConfigResponse {
   categories: ConfigOption[];
   severities: ConfigOption[];
   frequencies: ConfigOption[];
+  beta_feedback_types: ConfigOption[];
+  beta_overall_experiences: ConfigOption[];
+  beta_would_use_options: ConfigOption[];
 }
 
 export interface UploadResponse {

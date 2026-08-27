@@ -51,6 +51,14 @@ const STATUS_LABEL: Record<string, string> = {
   fixed: "Fixed",
   closed: "Closed",
   cannot_reproduce: "Cannot Repro",
+  accepted: "Accepted",
+  rejected: "Rejected",
+  in_testing: "In Testing",
+  shipped: "Shipped",
+  reviewed: "Reviewed",
+  noted: "Noted",
+  needs_follow_up: "Needs Follow-Up",
+  incorporated: "Incorporated",
 };
 
 const STATUS_COLOR: Record<string, string> = {
@@ -62,6 +70,14 @@ const STATUS_COLOR: Record<string, string> = {
   fixed: "#4ade80",
   closed: "#7a7a85",
   cannot_reproduce: "#c0c0c8",
+  accepted: "#4ade80",
+  rejected: "#ff5c73",
+  in_testing: "#b46bf7",
+  shipped: "#77e08c",
+  reviewed: "#a58ad9",
+  noted: "#c99ac0",
+  needs_follow_up: "#3ea1f7",
+  incorporated: "#77e08c",
 };
 export async function loadHistory(): Promise<void> {
   const loading = requireEl("#history-loading");
@@ -75,7 +91,7 @@ export async function loadHistory(): Promise<void> {
   list.innerHTML = "";
 
   interface Submission {
-    type: "bug" | "idea";
+    type: "bug" | "idea" | "beta";
     id: number;
     public_id: string;
     title: string;
@@ -103,13 +119,14 @@ export async function loadHistory(): Promise<void> {
     empty.classList.remove("hidden");
     return;
   }
-  for (const it of items) list.appendChild(renderRow(it as unknown as BugSummary & { type?: "bug" | "idea"; app?: string }));
+  for (const it of items) list.appendChild(renderRow(it as unknown as BugSummary & { type?: "bug" | "idea" | "beta"; app?: string }));
   list.classList.remove("hidden");
 }
-function renderRow(bug: BugSummary & { type?: "bug" | "idea"; app?: string }): HTMLLIElement {
+function renderRow(bug: BugSummary & { type?: "bug" | "idea" | "beta"; app?: string }): HTMLLIElement {
   const li = document.createElement("li");
   const isIdea = bug.type === "idea";
-  li.className = `history-item${isIdea ? " history-item-idea" : ""}`;
+  const isBeta = bug.type === "beta";
+  li.className = `history-item${isIdea ? " history-item-idea" : ""}${isBeta ? " history-item-beta" : ""}`;
   li.setAttribute("role", "button");
   li.tabIndex = 0;
 
@@ -119,13 +136,13 @@ function renderRow(bug: BugSummary & { type?: "bug" | "idea"; app?: string }): H
   // Uses the same monochrome SVGs as the Create landing cards, tinted to
   // match the badge color via CSS filter — no emojis anywhere in the UI.
   const typeBadge = document.createElement("span");
-  typeBadge.className = `type-badge type-badge-${isIdea ? "idea" : "bug"}`;
+  typeBadge.className = `type-badge type-badge-${isIdea ? "idea" : isBeta ? "beta" : "bug"}`;
   const badgeIcon = document.createElement("img");
   badgeIcon.className = "type-badge-glyph";
   badgeIcon.alt = "";
-  badgeIcon.src = isIdea ? "/icons/decorbulb.svg" : "/icons/cutebug.svg";
+  badgeIcon.src = isIdea ? "/icons/decorbulb.svg" : isBeta ? "/icons/devbulb.svg" : "/icons/cutebug.svg";
   const badgeText = document.createElement("span");
-  badgeText.textContent = isIdea ? "Idea" : "Bug";
+  badgeText.textContent = isIdea ? "Idea" : isBeta ? "Beta" : "Bug";
   typeBadge.append(badgeIcon, badgeText);
   const pub = document.createElement("span");
   pub.className = "pubid";
@@ -146,7 +163,7 @@ function renderRow(bug: BugSummary & { type?: "bug" | "idea"; app?: string }): H
   // app · created-at. Guard every field — an undefined slipping into
   // labelize() throws and would kill the whole render.
   const parts: string[] = [];
-  if (isIdea) {
+  if (isIdea || isBeta) {
     if (bug.app) parts.push(String(bug.app));
   } else {
     if (bug.category) parts.push(labelize(String(bug.category)));
@@ -173,24 +190,24 @@ function renderRow(bug: BugSummary & { type?: "bug" | "idea"; app?: string }): H
     btn.textContent = "Resend";
     btn.onclick = (ev) => {
       ev.stopPropagation();
-      void resendFromRow(bug.id, isIdea ? "idea" : "bug", btn, label);
+      void resendFromRow(bug.id, isIdea ? "idea" : isBeta ? "beta" : "bug", btn, label);
     };
     banner.append(label, btn);
     li.appendChild(banner);
   }
 
-  const open = () => void openDetail(bug.id, isIdea ? "idea" : "bug");
+  const open = () => void openDetail(bug.id, isIdea ? "idea" : isBeta ? "beta" : "bug");
   li.addEventListener("click", open);
   li.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") open(); });
   return li;
 }
 
 // Inline resend triggered from the History row's ⚠ chip.
-async function resendFromRow(id: number, type: "bug" | "idea", btn: HTMLButtonElement, label: HTMLElement): Promise<void> {
+async function resendFromRow(id: number, type: "bug" | "idea" | "beta", btn: HTMLButtonElement, label: HTMLElement): Promise<void> {
   btn.disabled = true;
   btn.textContent = "Sending…";
   try {
-    const base = type === "idea" ? "/api/myideas" : "/api/mybugs";
+    const base = type === "idea" ? "/api/myideas" : type === "beta" ? "/api/mybeta-feedback" : "/api/mybugs";
     const res = await fetch(`${base}/${id}/resubmit`, { method: "POST", headers: authHeaders() });
     const data = await res.json() as { ok: boolean; error?: string; telegram?: string };
     if (!res.ok || !data.ok) throw new Error(data.error || "resubmit");
@@ -203,7 +220,7 @@ async function resendFromRow(id: number, type: "bug" | "idea", btn: HTMLButtonEl
     btn.textContent = "Retry";
   }
 }
-async function openDetail(id: number, type: "bug" | "idea" = "bug"): Promise<void> {
+async function openDetail(id: number, type: "bug" | "idea" | "beta" = "bug"): Promise<void> {
   const list = requireEl("#history-list");
   const detail = requireEl("#history-detail");
   const loading = requireEl("#history-detail-loading");
@@ -219,6 +236,15 @@ async function openDetail(id: number, type: "bug" | "idea" = "bug"): Promise<voi
       const data = await res.json() as { ok: boolean; idea?: Record<string, unknown>; attachments?: AttachmentDetail[] };
       if (!res.ok || !data.ok || !data.idea) throw new Error("detail");
       renderIdeaDetail(data.idea, data.attachments ?? []);
+      loading.classList.add("hidden");
+      content.classList.remove("hidden");
+      return;
+    }
+    if (type === "beta") {
+      const res = await fetch(`/api/mybeta-feedback/${id}`, { headers: authHeaders() });
+      const data = await res.json() as { ok: boolean; beta_feedback?: Record<string, unknown>; attachments?: AttachmentDetail[] };
+      if (!res.ok || !data.ok || !data.beta_feedback) throw new Error("detail");
+      renderBetaFeedbackDetail(data.beta_feedback, data.attachments ?? []);
       loading.classList.add("hidden");
       content.classList.remove("hidden");
       return;
@@ -280,6 +306,9 @@ function renderIdeaDetail(idea: Record<string, unknown>, attachments: Attachment
   const where = String(get("where_it_belongs") || "").trim();
   const existingWhere = document.getElementById("detail-where-belongs");
   if (existingWhere) existingWhere.remove();
+  const existingBetaChanges = document.getElementById("detail-beta-changes");
+  if (existingBetaChanges) existingBetaChanges.previousElementSibling?.remove();
+  if (existingBetaChanges) existingBetaChanges.remove();
   if (where && copyCard) {
     const h = document.createElement("h3");
     h.textContent = "Where It Belongs";
@@ -315,6 +344,88 @@ function renderIdeaDetail(idea: Record<string, unknown>, attachments: Attachment
   }
 }
 
+function renderBetaFeedbackDetail(beta: Record<string, unknown>, attachments: AttachmentDetail[]): void {
+  const get = (k: string) => (beta[k] as string | null | undefined) ?? "";
+  setText("#detail-public-id", String(beta.public_id ?? ""));
+  setText("#detail-title", String(beta.testing ?? ""));
+  setText("#detail-status", STATUS_LABEL[String(beta.status ?? "")] ?? labelize(String(beta.status ?? "")));
+  setText("#detail-app", String(beta.app ?? ""));
+  setText("#detail-version", get("app_version") || "Not provided");
+  setText("#detail-build", get("app_build") || "Not provided");
+
+  for (const id of ["detail-version","detail-build","detail-category","detail-severity","detail-frequency"]) {
+    const el = document.getElementById(id);
+    const cell = el?.parentElement as HTMLElement | null | undefined;
+    if (cell) cell.style.display = "";
+  }
+  for (const id of ["detail-device","detail-os"]) {
+    const el = document.getElementById(id);
+    const cell = el?.parentElement as HTMLElement | null | undefined;
+    if (cell) cell.style.display = "none";
+  }
+  relabelGridCell("detail-category", "Feedback Type");
+  relabelGridCell("detail-severity", "Overall");
+  relabelGridCell("detail-frequency", "Would Use");
+
+  const feedbackTypes = parseFeedbackTypes(get("feedback_types")).map(labelize).join(", ") || "Not provided";
+  setText("#detail-category", feedbackTypes);
+  setText("#detail-severity", labelize(get("overall_experience")));
+  setText("#detail-frequency", labelize(get("would_use_feature")));
+
+  const appCell = document.getElementById("detail-app")?.parentElement as HTMLElement | null;
+  if (appCell) { appCell.style.gridColumn = ""; appCell.style.maxWidth = ""; }
+  const appStrong = document.getElementById("detail-app") as HTMLElement | null;
+  if (appStrong) { appStrong.style.whiteSpace = ""; appStrong.style.overflow = ""; appStrong.style.textOverflow = ""; }
+
+  const copyCard = document.querySelector<HTMLElement>(".detail-copy-card");
+  if (copyCard) {
+    const headings = copyCard.querySelectorAll("h2, h3");
+    const labels = ["What Did You Do?", "What Happened?", "What Did You Expect?", "Additional Notes"];
+    headings.forEach((h, i) => { if (labels[i]) h.textContent = labels[i]; });
+  }
+  setText("#detail-actual", get("what_did_you_do"));
+  setText("#detail-expected", get("what_happened"));
+  setText("#detail-steps", get("expected_behavior") || "Not provided");
+  setText("#detail-notes", get("notes") || "None");
+
+  const existingChanges = document.getElementById("detail-beta-changes");
+  if (existingChanges) existingChanges.remove();
+  const changes = get("changes").trim();
+  if (changes && copyCard) {
+    const h = document.createElement("h3");
+    h.textContent = "Anything You'd Change?";
+    const p = document.createElement("p");
+    p.id = "detail-beta-changes";
+    p.textContent = changes;
+    copyCard.appendChild(h);
+    copyCard.appendChild(p);
+  }
+
+  const createdAt = Number(beta.created_at ?? 0);
+  setText("#detail-submitted", createdAt ? new Date(createdAt * 1000).toLocaleString() : "");
+
+  const attachmentList = document.getElementById("detail-attachments");
+  if (attachmentList) {
+    attachmentList.innerHTML = "";
+    if (!attachments.length) {
+      const li = document.createElement("li");
+      li.className = "detail-attachment empty-attachment";
+      li.textContent = "No attachments";
+      attachmentList.appendChild(li);
+    } else {
+      for (const a of attachments) attachmentList.appendChild(renderAttachment(a));
+    }
+  }
+
+  const rb = document.getElementById("detail-resubmit") as HTMLButtonElement | null;
+  if (rb) {
+    rb.style.display = "";
+    rb.textContent = "Resubmit to Telegram";
+    rb.disabled = false;
+    rb.onclick = () => void resubmitBetaFeedback(Number(beta.id), rb);
+  }
+}
+
 function renderDetail(bug: BugDetail, attachments: AttachmentDetail[]): void {
   // Restore the bug view: un-hide any cells the idea view may have hidden,
   // restore the copy-card labels, and remove any idea-only injections.
@@ -337,8 +448,14 @@ function renderDetail(bug: BugDetail, attachments: AttachmentDetail[]): void {
   const wb = document.getElementById("detail-where-belongs");
   if (wb) wb.previousElementSibling?.remove(); // remove the injected <h3>
   if (wb) wb.remove();
+  const bc = document.getElementById("detail-beta-changes");
+  if (bc) bc.previousElementSibling?.remove();
+  if (bc) bc.remove();
   const rb = document.getElementById("detail-resubmit") as HTMLButtonElement | null;
   if (rb) rb.style.display = "";
+  relabelGridCell("detail-category", "Category");
+  relabelGridCell("detail-severity", "Severity");
+  relabelGridCell("detail-frequency", "Frequency");
 
   setText("#detail-public-id", bug.public_id);
   setText("#detail-title", bug.title);
@@ -408,6 +525,29 @@ async function resubmitIdea(id: number, button: HTMLButtonElement): Promise<void
   }
 }
 
+async function resubmitBetaFeedback(id: number, button: HTMLButtonElement): Promise<void> {
+  button.disabled = true;
+  button.textContent = "Resubmitting...";
+  const feedback = requireEl("#detail-resubmit-feedback");
+  feedback.textContent = "";
+  feedback.classList.remove("error");
+  try {
+    const res = await fetch(`/api/mybeta-feedback/${id}/resubmit`, { method: "POST", headers: authHeaders() });
+    const data = await res.json() as { ok: boolean; error?: string };
+    if (!res.ok || !data.ok) throw new Error(data.error || "resubmit");
+    feedback.classList.add("success");
+    feedback.textContent = "Beta feedback details and any pending attachments were sent to the Telegram comments.";
+    button.textContent = "Resubmitted";
+  } catch (e) {
+    const code = e instanceof Error ? e.message : "resubmit";
+    feedback.classList.remove("success");
+    feedback.classList.add("error");
+    feedback.textContent = friendlyResubmitError(code);
+    button.disabled = false;
+    button.textContent = "Resubmit to Telegram";
+  }
+}
+
 async function resubmitBug(id: number, button: HTMLButtonElement): Promise<void> {
   button.disabled = true;
   button.textContent = "Resubmitting…";
@@ -454,6 +594,20 @@ function setText(selector: string, value: string): void {
 
 function labelize(value: string): string {
   return value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+}
+
+function relabelGridCell(strongId: string, label: string): void {
+  const cell = document.getElementById(strongId)?.parentElement as HTMLElement | null;
+  const span = cell?.querySelector("span");
+  if (span) span.textContent = label;
+}
+
+function parseFeedbackTypes(value: string): string[] {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (Array.isArray(parsed)) return parsed.filter((v): v is string => typeof v === "string");
+  } catch { /* fall through */ }
+  return value.split(",").map((v) => v.trim()).filter(Boolean);
 }
 
 function formatRelative(unixSec: number): string {

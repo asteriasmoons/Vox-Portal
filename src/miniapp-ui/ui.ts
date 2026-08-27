@@ -9,7 +9,7 @@ export function clearErrors(): void {
 }
 
 export function showTopError(msg: string): void {
-  const form = $("#form");
+  const form = $("#form") ?? $("form");
   if (!form) return;
   $$(".top-error").forEach((n) => n.remove());
   const d = document.createElement("div");

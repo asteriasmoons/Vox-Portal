@@ -394,3 +394,97 @@ export function buildNotePromptRichMessage(bug: BugRow): { blocks: unknown[] } {
     ],
   };
 }
+
+// ── Beta Feedback Rich Message ────────────────────────
+import type { BetaFeedbackRow } from "../db/types";
+import {
+  BETA_STATUSES,
+  betaOverallExperienceMeta,
+  betaStatusMeta,
+  betaWouldUseMeta,
+} from "../beta/constants";
+import { betaFeedbackPublicId, betaFeedbackTypeLabels, formatTimestamp as formatBetaTs } from "../beta/formatting";
+
+export function buildBetaFeedbackRichMessage(row: BetaFeedbackRow): { blocks: unknown[] } {
+  const blocks: unknown[] = [];
+  const st = betaStatusMeta(row.status);
+  const feedbackTypes = betaFeedbackTypeLabels(row);
+
+  blocks.push(heading(`BETA FEEDBACK — ${betaFeedbackPublicId(row)}`, 2));
+  blocks.push(paragraph(row.testing));
+
+  blocks.push(kvTable([
+    ["App", row.app],
+    ["Version", row.app_version || "Not provided"],
+    ["Build", row.app_build || "Not provided"],
+    ["Status", `${st.emoji} ${st.label}`],
+    ["Feedback Type", feedbackTypes.length ? feedbackTypes.join(", ") : "Not provided"],
+    ["Overall Experience", betaOverallExperienceMeta(row.overall_experience).label],
+    ["Would Use Feature", betaWouldUseMeta(row.would_use_feature).label],
+  ]));
+
+  blocks.push(divider());
+
+  const sec = (h: string, v: string | null | undefined) => {
+    if (!v || !v.trim()) return;
+    blocks.push(heading(h, 4));
+    blocks.push(paragraph(v));
+  };
+  sec("What Did You Do?", row.what_did_you_do);
+  sec("What Happened?", row.what_happened);
+  sec("What Did You Expect?", row.expected_behavior);
+  sec("Anything You'd Change?", row.changes);
+  sec("Additional Notes", row.notes);
+
+  const reporter = row.reporter_username
+    ? `@${row.reporter_username}`
+    : row.reporter_display_name || "anonymous";
+  blocks.push(heading("Reporter", 4));
+  blocks.push(paragraph(`${reporter} · submitted ${formatBetaTs(row.created_at)}`));
+
+  blocks.push(divider());
+  for (const buttonRow of betaFeedbackManagementButtonBlocks(row)) blocks.push(buttonRow);
+  return { blocks };
+}
+
+export function betaFeedbackManagementButtonBlocks(row: BetaFeedbackRow): unknown[] {
+  const id = row.id;
+  const cb = (status: string) => `beta:act:${id}:status:${status}`;
+  const rows: unknown[] = [];
+  let buttons: RichMessageButton[] = [];
+  for (const status of BETA_STATUSES) {
+    buttons.push(
+      status.id === row.status
+        ? disabledButton(status.label)
+        : { text: status.label, callback_data: cb(status.id) },
+    );
+    if (buttons.length === 2) {
+      rows.push(buttonsRow(buttons));
+      buttons = [];
+    }
+  }
+  if (buttons.length) rows.push(buttonsRow(buttons));
+  return rows;
+}
+
+export function buildBetaFeedbackStatusPickerRichMessage(row: BetaFeedbackRow): { blocks: unknown[] } {
+  const blocks: unknown[] = [
+    heading(`Change Status — ${betaFeedbackPublicId(row)}`, 3),
+    paragraph(`Current: ${betaStatusMeta(row.status).emoji} ${betaStatusMeta(row.status).label}`),
+  ];
+  const rows: unknown[] = [];
+  let buttons: RichMessageButton[] = [];
+  for (const status of BETA_STATUSES) {
+    buttons.push(
+      status.id === row.status
+        ? disabledButton(`${status.emoji} ${status.label}`)
+        : { text: `${status.emoji} ${status.label}`, callback_data: `beta:act:${row.id}:status:${status.id}` },
+    );
+    if (buttons.length === 2) {
+      rows.push(buttonsRow(buttons));
+      buttons = [];
+    }
+  }
+  if (buttons.length) rows.push(buttonsRow(buttons));
+  return { blocks: [...blocks, ...rows] };
+}
