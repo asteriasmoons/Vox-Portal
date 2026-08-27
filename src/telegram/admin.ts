@@ -365,7 +365,8 @@ export async function handleAdminGroupCommand(
   if (!msg.message_thread_id) return false;
 
   const spaceIdx = text.indexOf(" ");
-  const cmd = (spaceIdx === -1 ? text.slice(1) : text.slice(1, spaceIdx)).toLowerCase();
+  const rawCmd = spaceIdx === -1 ? text.slice(1) : text.slice(1, spaceIdx);
+  const cmd = rawCmd.split("@")[0].toLowerCase();
   const args = spaceIdx === -1 ? "" : text.slice(spaceIdx + 1).trim();
 
   // /reason is an idea-flow command; it doesn't need a matching bug row.
