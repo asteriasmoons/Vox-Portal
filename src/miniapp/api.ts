@@ -191,18 +191,22 @@ export async function handleMyIdeaDetail(env: Env, req: Request, id: number): Pr
 
 // POST /api/submit-idea — creates a Feature Idea (Telegram + GitHub Discussion).
 export async function handleSubmitIdea(env: Env, req: Request): Promise<Response> {
+  console.log("submit_idea.enter");
   const initData = req.headers.get("x-telegram-init-data") ?? "";
   let user;
   try {
     ({ user } = await validateInitData(env, initData));
-  } catch { return json({ ok: false, error: "auth" }, { status: 401 }); }
+  } catch (e) { console.log("submit_idea.auth_fail", String(e)); return json({ ok: false, error: "auth" }, { status: 401 }); }
+  console.log("submit_idea.auth_ok", user.id);
 
   let payload: IdeaSubmitPayload;
   try { payload = (await req.json()) as IdeaSubmitPayload; }
-  catch { return badRequest("invalid JSON"); }
+  catch (e) { console.log("submit_idea.json_fail", String(e)); return badRequest("invalid JSON"); }
+  console.log("submit_idea.payload_ok", JSON.stringify({app:payload.app, title:payload.title, atts: (payload.attachments||[]).length}));
 
   const errs = validateIdeaPayload(payload);
-  if (errs.length) return badRequest(errs.join("; "));
+  if (errs.length) { console.log("submit_idea.validate_fail", errs.join("; ")); return badRequest(errs.join("; ")); }
+  console.log("submit_idea.validate_ok");
 
   // Materialize R2 attachments back to bytes.
   const attachments: IncomingIdeaAttachment[] = [];
@@ -224,6 +228,7 @@ export async function handleSubmitIdea(env: Env, req: Request): Promise<Response
   }
 
   try {
+    console.log("submit_idea.calling_createIdea");
     const row = await createIdea(
       env,
       {
@@ -261,6 +266,7 @@ export async function handleSubmitIdea(env: Env, req: Request): Promise<Response
       github,
     });
   } catch (e) {
+    console.log("submit_idea.createIdea_threw", String(e), (e as Error)?.stack ?? "");
     log.error("miniapp_submit_idea_failed", e, { user_id: user.id });
     return json({ ok: false, error: "server" }, { status: 500 });
   }
