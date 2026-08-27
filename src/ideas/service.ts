@@ -21,7 +21,7 @@ import type { Env } from "../config";
 import { discussionChatId } from "../config";
 import {
   insertIdea, nextIdeaNumber, setIdeaTelegramLinkage, saveIdeaGitHubMeta,
-  insertIdeaAttachment, setIdeaAttachmentPostedMessage, getIdea, clearIdeaTelegramLinkage,
+  insertIdeaAttachment, setIdeaAttachmentPostedMessage, getIdea,
   listIdeaAttachments,
   updateIdeaStatus as dbUpdateIdeaStatus,
 } from "../db/queries";
@@ -248,14 +248,10 @@ export async function resendIdeaToTelegram(
   let row = await getIdea(env, ideaId);
   if (!row) throw new Error("idea_not_found");
 
-  if (row.channel_message_id && row.report_message_id && !opts.force) {
-    return { row, telegram: "already_posted" };
-  }
-
-  if (opts.force && row.channel_message_id) {
-    await clearIdeaTelegramLinkage(env, ideaId);
-    row = (await getIdea(env, ideaId))!;
-  }
+  // A manual resubmit is intentionally allowed even when the original Rich
+  // Message already posted. Reuse the existing channel ticket/discussion
+  // mirror and post a fresh copy of the Idea report into the same comments,
+  // matching the bug-report resubmit behavior.
 
   // If there is no usable channel ticket, create a fresh one.
   let channelMessageId = row.channel_message_id;
