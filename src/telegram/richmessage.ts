@@ -466,8 +466,8 @@ export function buildBetaFeedbackStatusPickerRichMessage(row: BetaFeedbackRow): 
   for (const status of BETA_STATUSES) {
     buttons.push(
       status.id === row.status
-        ? disabledButton(`${status.emoji} ${status.label}`)
-        : { text: `${status.emoji} ${status.label}`, callback_data: `beta:act:${row.id}:status:${status.id}` },
+        ? disabledButton(status.label)
+        : { text: status.label, callback_data: `beta:act:${row.id}:status:${status.id}` },
     );
     if (buttons.length === 2) {
       rows.push(buttonsRow(buttons));

@@ -30,7 +30,7 @@ import {
   renderBetaFeedbackReporterDm,
   renderBetaFeedbackSubmissionConfirmation,
 } from "./formatting";
-import { BETA_NOTIFY_ON_STATUS, betaStatusMeta, type BetaStatusId } from "./constants";
+import { betaStatusMeta, type BetaStatusId } from "./constants";
 import { discussionChatId } from "../config";
 import { esc } from "../util/html";
 import { log } from "../util/log";
@@ -265,16 +265,21 @@ export async function changeBetaFeedbackStatus(
     const line = from
       ? `${from.emoji} ${from.label} → ${to.emoji} ${to.label}`
       : `→ ${to.emoji} ${to.label}`;
+    const replyToMessageId = row.report_message_id ?? row.discussion_message_id ?? row.discussion_thread_id;
     try {
       await sendMessage(env, discussionChatId(env),
         `<b>BETA FEEDBACK STATUS UPDATE</b>\n${esc(line)}`,
-        { parse_mode: "HTML", message_thread_id: row.discussion_thread_id });
+        {
+          parse_mode: "HTML",
+          message_thread_id: row.discussion_thread_id,
+          reply_parameters: { message_id: replyToMessageId },
+        });
     } catch (e) {
       log.warn("beta_feedback_history_post_failed", { betaFeedbackId, err: String(e) });
     }
   }
 
-  if (BETA_NOTIFY_ON_STATUS.includes(toStatus) && change.from !== toStatus) {
+  if (change.from !== toStatus) {
     try {
       await sendMessage(env, row.reporter_tg_id, renderBetaFeedbackReporterDm(row, change.from), { parse_mode: "HTML" });
     } catch (e) {
