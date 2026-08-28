@@ -699,6 +699,13 @@ async function handleReasonCommand(
   const { refreshIdeaRichReport } = await import("./channel");
   await refreshIdeaRichReport(env, fresh);
 
+  try {
+    const { renderIdeaReporterDm } = await import("../ideas/formatting");
+    await sendMessage(env, fresh.reporter_tg_id, renderIdeaReporterDm(fresh, null), { parse_mode: "HTML" });
+  } catch (e) {
+    log.warn("idea_reason_reporter_dm_failed", { ideaId, err: String(e) });
+  }
+
   if (fresh.github_discussion_id) {
     const { resolveIdeaDiscussion } = await import("../ideas/constants");
     const target = resolveIdeaDiscussion(fresh.app);
