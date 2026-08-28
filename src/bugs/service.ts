@@ -26,10 +26,10 @@ import {
 } from "../telegram/channel";
 import { sendMessage, TelegramError } from "../telegram/api";
 import { renderReporterDm, renderSubmissionConfirmation } from "./formatting";
-import { NOTIFY_ON_STATUS, type StatusId } from "./constants";
+import { type StatusId } from "./constants";
+import { esc } from "../util/html";
 import { log } from "../util/log";
 import { createIssueForBug, type GitHubOutcome } from "../github/service";
-import { discussionChatId as _discussionChatId } from "../config";
 
 // Attachment payload accepted by createBug.
 export type IncomingAttachment =
@@ -158,25 +158,44 @@ export async function createBug(
   return (await getBug(env, row.id)) ?? row;
 }
 
-// Posts a small "GitHub Issue: #147" message into the bug's discussion thread.
-// Unobtrusive; does NOT modify the ticket message or the report body.
 async function postGitHubCrossReference(
   env: Env,
   bugId: number,
-  repoFullName: string,
-  issueNumber: number,
+  _repoFullName: string,
+  _issueNumber: number,
   issueUrl: string,
 ): Promise<void> {
   try {
     const row = await getBug(env, bugId);
-    if (!row || !row.discussion_thread_id) return;
-    const text = `🔗 <b>GitHub Issue:</b> <a href="${issueUrl}">#${issueNumber}</a> · ${repoFullName}`;
-    await sendMessage(env, _discussionChatId(env), text, {
-      parse_mode: "HTML",
-      message_thread_id: row.discussion_thread_id,
-    });
+    if (!row) return;
+    await postGitHubIssuePreviewToThread(env, row, issueUrl);
   } catch (e) {
     log.warn("github_crossref_post_failed", { bugId, err: String(e) });
+  }
+}
+
+export async function postGitHubIssuePreviewToThread(
+  env: Env,
+  row: BugRow,
+  url = row.github_issue_url,
+): Promise<void> {
+  if (!url || !row.discussion_thread_id) return;
+  const replyToMessageId = row.report_message_id ?? row.discussion_message_id ?? row.discussion_thread_id;
+  try {
+    await sendMessage(env, discussionChatId(env), `GitHub Issue\n${esc(url)}`, {
+      parse_mode: "HTML",
+      message_thread_id: row.discussion_thread_id,
+      reply_parameters: { message_id: replyToMessageId },
+      disable_web_page_preview: false,
+      link_preview_options: {
+        is_disabled: false,
+        url,
+        prefer_large_media: true,
+        show_above_text: false,
+      },
+    });
+  } catch (e) {
+    log.warn("github_issue_preview_post_failed", { bugId: row.id, err: String(e) });
   }
 }
 
@@ -291,6 +310,7 @@ export async function resendBugToTelegram(
     row = (await getBug(env, bugId)) ?? row;
     return { row, telegram: "failed" };
   }
+  row = { ...row, report_message_id: reportMessage.message_id };
 
   // 3) Re-post existing attachments (rows already exist in D1).
   const { listAttachments, setAttachmentPostedMessage } = await import("../db/queries");
@@ -322,7 +342,11 @@ export async function resendBugToTelegram(
   }
 
   // 4) GitHub — idempotent; only creates if not already created.
-  try { await createIssueForBug(env, row.id); } catch (e) {
+  try {
+    await createIssueForBug(env, row.id);
+    const fresh = await getBug(env, row.id);
+    if (fresh?.github_issue_url) await postGitHubIssuePreviewToThread(env, fresh);
+  } catch (e) {
     log.warn("resend_github_retry_failed", { bugId, err: String(e) });
   }
 
@@ -347,7 +371,7 @@ export async function changeStatus(
   await refreshRichReport(env, row);
   await postStatusUpdateToThread(env, row, change.from);
 
-  if (NOTIFY_ON_STATUS.includes(toStatus) && change.from !== toStatus) {
+  if (change.from !== toStatus) {
     try {
       await sendMessage(env, row.reporter_tg_id, renderReporterDm(row, change.from), {
         parse_mode: "HTML",

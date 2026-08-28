@@ -22,7 +22,7 @@
 //   6. Appends a permanent STATUS UPDATE / SEVERITY UPDATE / etc. message
 //      to the discussion thread (the history log — existing behavior).
 //   7. Syncs the equivalent action to the linked GitHub Issue (idempotent).
-//   8. DMs the reporter on notify-worthy status transitions.
+//   8. DMs the reporter on button-driven changes.
 //
 // GitHub failure is isolated: we log it, we do not roll back Telegram.
 
@@ -47,13 +47,14 @@ import {
   getBug, updateBugCategory, updateBugSeverity, markDuplicate,
 } from "../db/queries";
 import { changeStatus } from "../bugs/service";
-import { refreshChannelTicket, postStatusUpdateToThread, postAdminNoteToThread } from "./channel";
+import { refreshChannelTicket, postStatusUpdateToThread, postManagementUpdateToThread, postAdminNoteToThread } from "./channel";
 import type { StatusId } from "../bugs/constants";
 import { STATUS_IDS, SEVERITY_IDS, CATEGORY_IDS, statusMeta, severityMeta, categoryMeta } from "../bugs/constants";
 import {
   syncStatusChange, syncSeverityChange, syncCategoryChange, syncAdminNote,
 } from "../github/service";
 import { log } from "../util/log";
+import { esc } from "../util/html";
 import type { BugRow } from "../db/types";
 
 interface CallbackCtx {
@@ -216,8 +217,14 @@ export async function handleAdminCallback(ctx: CallbackCtx): Promise<boolean> {
         await updateBugSeverity(env, bug.id, value);
         const fresh = await getBug(env, bug.id);
         if (fresh) {
+          const fromLabel = severityMeta(from).label;
+          const toLabel = severityMeta(value).label;
           await refreshChannelTicket(env, fresh);
           await refreshRichReport(env, fresh);
+          if (from !== value) {
+            await postManagementUpdateToThread(env, fresh, "BUG SEVERITY UPDATE", `${fromLabel} → ${toLabel}`);
+            await notifyBugReporterFieldChange(env, fresh, "Severity", fromLabel, toLabel);
+          }
           void syncSeverityChange(env, fresh, from, value).catch((e) =>
             log.warn("sync_severity_failed", { bugId: bug.id, err: String(e) }));
         }
@@ -234,8 +241,14 @@ export async function handleAdminCallback(ctx: CallbackCtx): Promise<boolean> {
         await updateBugCategory(env, bug.id, value);
         const fresh = await getBug(env, bug.id);
         if (fresh) {
+          const fromLabel = categoryMeta(from).label;
+          const toLabel = categoryMeta(value).label;
           await refreshChannelTicket(env, fresh);
           await refreshRichReport(env, fresh);
+          if (from !== value) {
+            await postManagementUpdateToThread(env, fresh, "BUG CATEGORY UPDATE", `${fromLabel} → ${toLabel}`);
+            await notifyBugReporterFieldChange(env, fresh, "Category", fromLabel, toLabel);
+          }
           void syncCategoryChange(env, fresh, from, value).catch((e) =>
             log.warn("sync_category_failed", { bugId: bug.id, err: String(e) }));
         }
@@ -252,6 +265,31 @@ export async function handleAdminCallback(ctx: CallbackCtx): Promise<boolean> {
     await answerCallbackQuery(env, callbackQueryId, "Action failed. Check logs.", true);
   }
   return true;
+}
+
+async function notifyBugReporterFieldChange(
+  env: Env,
+  row: BugRow,
+  field: string,
+  fromLabel: string,
+  toLabel: string,
+): Promise<void> {
+  const publicId = `BUG-${String(row.public_number).padStart(4, "0")}`;
+  try {
+    await sendMessage(
+      env,
+      row.reporter_tg_id,
+      [
+        `<b>${esc(publicId)} Update</b>`,
+        esc(row.title),
+        "",
+        `${esc(field)} changed: ${esc(fromLabel)} → <b>${esc(toLabel)}</b>`,
+      ].join("\n"),
+      { parse_mode: "HTML" },
+    );
+  } catch (e) {
+    log.warn("bug_reporter_field_dm_failed", { bugId: row.id, field, err: String(e) });
+  }
 }
 
 // Common post-action tidy: delete the ephemeral picker (if any) and ack.

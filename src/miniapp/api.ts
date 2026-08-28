@@ -4,13 +4,14 @@
 
 import { type Env, isAdmin } from "../config";
 import { validateInitData } from "../telegram/initdata";
-import { createBug, resendBugToTelegram, type IncomingAttachment } from "../bugs/service";
+import { createBug, resendBugToTelegram, postGitHubIssuePreviewToThread, type IncomingAttachment } from "../bugs/service";
 import { createIdea, resendIdeaToTelegram, type IncomingIdeaAttachment } from "../ideas/service";
 import { createBetaFeedback, resendBetaFeedbackToTelegram, type IncomingBetaFeedbackAttachment } from "../beta/service";
 import { listIdeasByReporter, getIdea, listIdeaAttachments } from "../db/queries";
 import { ideaPublicId } from "../ideas/formatting";
 import { betaFeedbackPublicId } from "../beta/formatting";
 import { postChannelTicket, postReportToThread, postR2AttachmentToThread, postTelegramAttachmentToThread, waitForDiscussionMirror } from "../telegram/channel";
+import { createIssueForBug } from "../github/service";
 import { APPS, CATEGORIES, SEVERITIES, FREQUENCIES, CATEGORY_IDS, SEVERITY_IDS } from "../bugs/constants";
 import { BETA_FEEDBACK_TYPE_IDS, BETA_FEEDBACK_TYPES, BETA_OVERALL_EXPERIENCE_IDS, BETA_OVERALL_EXPERIENCES, BETA_WOULD_USE_IDS, BETA_WOULD_USE_OPTIONS } from "../beta/constants";
 import { listBugsByReporter, getBug, listAttachments, setAttachmentPostedMessage, setBugTelegramLinkage, listBetaFeedbackByReporter, getBetaFeedback, listBetaFeedbackAttachments } from "../db/queries";
@@ -635,7 +636,11 @@ export async function handleResubmitBug(env: Env, req: Request, id: number): Pro
     row = { ...row, discussion_thread_id: row.discussion_message_id };
   }
 
-  await postReportToThread(env, row, mirrorId);
+  const reportMessage = await postReportToThread(env, row, mirrorId);
+  if (!reportMessage) {
+    return json({ ok: false, error: "telegram_resubmit_failed" }, { status: 502 });
+  }
+  row = { ...row, report_message_id: reportMessage.message_id };
   const atts = await listAttachments(env, row.id);
   for (const a of atts) {
     if (a.posted_message_id) continue;
@@ -659,7 +664,29 @@ export async function handleResubmitBug(env: Env, req: Request, id: number): Pro
       });
     }
   }
-  return json({ ok: true });
+
+  try {
+    await createIssueForBug(env, row.id);
+    const fresh = await getBug(env, row.id);
+    if (fresh?.github_issue_url) {
+      await postGitHubIssuePreviewToThread(env, {
+        ...fresh,
+        report_message_id: row.report_message_id,
+      });
+    }
+  } catch (e) {
+    log.warn("resubmit_github_preview_failed", { bugId: row.id, err: String(e) });
+  }
+
+  const finalRow = (await getBug(env, row.id)) ?? row;
+  return json({
+    ok: true,
+    public_id: publicIdOf(finalRow),
+    telegram: "posted",
+    report_posted: true,
+    github_created: !!finalRow.github_issue_number,
+    github_url: finalRow.github_issue_url,
+  });
 }
 
 // ── helpers ─────────────────────────────────────────────────

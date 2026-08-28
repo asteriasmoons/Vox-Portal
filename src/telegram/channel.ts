@@ -156,10 +156,28 @@ export async function postStatusUpdateToThread(
 ): Promise<void> {
   if (!row.discussion_message_id) return;
   const threadId = commentThreadId(row);
+  const replyToMessageId = row.report_message_id ?? row.discussion_message_id;
   await sendMessage(env, discussionChatId(env), renderStatusUpdate(fromStatus, row.status), {
     parse_mode: "HTML",
     message_thread_id: threadId,
-    reply_parameters: { message_id: row.discussion_message_id },
+    reply_parameters: { message_id: replyToMessageId },
+  });
+}
+
+export async function postManagementUpdateToThread(
+  env: Env,
+  row: BugRow,
+  title: string,
+  line: string,
+): Promise<void> {
+  if (!row.discussion_message_id) return;
+  const threadId = commentThreadId(row);
+  const replyToMessageId = row.report_message_id ?? row.discussion_message_id;
+  const { esc } = await import("../util/html");
+  await sendMessage(env, discussionChatId(env), `<b>${esc(title)}</b>\n${esc(line)}`, {
+    parse_mode: "HTML",
+    message_thread_id: threadId,
+    reply_parameters: { message_id: replyToMessageId },
   });
 }
 
