@@ -44,6 +44,7 @@ import {
   resolveIdeaDiscussion, ideaStatusMeta, type IdeaStatusId,
 } from "./constants";
 import { addDiscussionComment } from "../github/discussions";
+import { esc } from "../util/html";
 import { log } from "../util/log";
 
 export type IncomingIdeaAttachment =
@@ -172,30 +173,38 @@ async function maybePostGitHubDiscussion(
     });
     const fresh = await getIdea(env, row.id);
     if (fresh) await refreshIdeaRichReport(env, fresh);
-    const threadRow = fresh ?? row;
-    if (threadRow.discussion_thread_id) {
-      const replyToMessageId = threadRow.report_message_id ?? threadRow.discussion_message_id ?? threadRow.discussion_thread_id;
-      try {
-        await sendMessage(env, discussionChatId(env),
-          `GitHub Discussion\n${res.comment_url}`,
-          {
-            parse_mode: "HTML",
-            message_thread_id: threadRow.discussion_thread_id,
-            reply_parameters: { message_id: replyToMessageId },
-            disable_web_page_preview: false,
-            link_preview_options: {
-              is_disabled: false,
-              url: res.comment_url,
-              prefer_large_media: true,
-              show_above_text: false,
-            },
-          });
-      } catch (e) { log.warn("idea_crossref_failed", { ideaId: row.id, err: String(e) }); }
-    }
+    await postIdeaGitHubPreviewToThread(env, fresh ?? row, res.comment_url);
   } else {
     const reason = res.error ?? "unknown";
     log.warn("idea_github_failed", { ideaId: row.id, reason });
     await saveIdeaGitHubMeta(env, row.id, { github_status: "failed", github_error: reason.slice(0, 200) });
+  }
+}
+
+export async function postIdeaGitHubPreviewToThread(
+  env: Env,
+  row: IdeaRow,
+  url = row.github_comment_url,
+): Promise<void> {
+  if (!url || !row.discussion_thread_id) return;
+  const replyToMessageId = row.report_message_id ?? row.discussion_message_id ?? row.discussion_thread_id;
+  try {
+    await sendMessage(env, discussionChatId(env),
+      `GitHub Discussion\n${esc(url)}`,
+      {
+        parse_mode: "HTML",
+        message_thread_id: row.discussion_thread_id,
+        reply_parameters: { message_id: replyToMessageId },
+        disable_web_page_preview: false,
+        link_preview_options: {
+          is_disabled: false,
+          url,
+          prefer_large_media: true,
+          show_above_text: false,
+        },
+      });
+  } catch (e) {
+    log.warn("idea_crossref_failed", { ideaId: row.id, err: String(e) });
   }
 }
 
@@ -300,6 +309,11 @@ export async function resendIdeaToTelegram(
     row = (await getIdea(env, ideaId)) ?? row;
     return { row, telegram: "failed" };
   }
+  row = { ...row, report_message_id: reportMessage.message_id };
+
+  if (row.github_comment_url) {
+    await postIdeaGitHubPreviewToThread(env, row);
+  }
 
   const stored = await listIdeaAttachments(env, row.id);
   for (const a of stored) {
@@ -352,7 +366,6 @@ export async function changeIdeaStatus(
   await refreshIdeaRichReport(env, row);
 
   if (row.discussion_thread_id) {
-    const { esc } = await import("../util/html");
     const from = change.from ? ideaStatusMeta(change.from) : null;
     const to = ideaStatusMeta(change.to);
     const line = from

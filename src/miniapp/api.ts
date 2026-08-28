@@ -7,10 +7,10 @@ import { validateInitData } from "../telegram/initdata";
 import { createBug, resendBugToTelegram, type IncomingAttachment } from "../bugs/service";
 import { createIdea, resendIdeaToTelegram, type IncomingIdeaAttachment } from "../ideas/service";
 import { createBetaFeedback, resendBetaFeedbackToTelegram, type IncomingBetaFeedbackAttachment } from "../beta/service";
-import { listIdeasByReporter, getIdea, listIdeaAttachments, setIdeaAttachmentPostedMessage, setIdeaTelegramLinkage } from "../db/queries";
+import { listIdeasByReporter, getIdea, listIdeaAttachments } from "../db/queries";
 import { ideaPublicId } from "../ideas/formatting";
 import { betaFeedbackPublicId } from "../beta/formatting";
-import { postChannelTicket, postReportToThread, postR2AttachmentToThread, postTelegramAttachmentToThread, waitForDiscussionMirror, postIdeaChannelTicket, postIdeaReportToThread, postIdeaR2AttachmentToThread, postIdeaTelegramAttachmentToThread, waitForIdeaDiscussionMirror } from "../telegram/channel";
+import { postChannelTicket, postReportToThread, postR2AttachmentToThread, postTelegramAttachmentToThread, waitForDiscussionMirror } from "../telegram/channel";
 import { APPS, CATEGORIES, SEVERITIES, FREQUENCIES, CATEGORY_IDS, SEVERITY_IDS } from "../bugs/constants";
 import { BETA_FEEDBACK_TYPE_IDS, BETA_FEEDBACK_TYPES, BETA_OVERALL_EXPERIENCE_IDS, BETA_OVERALL_EXPERIENCES, BETA_WOULD_USE_IDS, BETA_WOULD_USE_OPTIONS } from "../beta/constants";
 import { listBugsByReporter, getBug, listAttachments, setAttachmentPostedMessage, setBugTelegramLinkage, listBetaFeedbackByReporter, getBetaFeedback, listBetaFeedbackAttachments } from "../db/queries";
@@ -206,71 +206,23 @@ export async function handleResubmitIdea(env: Env, req: Request, id: number): Pr
   if (!row || row.reporter_tg_id !== user.id) return json({ ok: false, error: "not_found" }, { status: 404 });
   if (!isAdmin(env, user.id)) return json({ ok: false, error: "forbidden" }, { status: 403 });
 
-  // Case A: original submission never posted the channel ticket at all —
-  // delegate to the from-scratch idea resender, matching bug behavior.
-  if (!row.channel_message_id) {
-    try {
-      const { row: fresh, telegram } = await resendIdeaToTelegram(env, id);
-      return json({
-        ok: true,
-        public_id: ideaPublicId(fresh),
-        telegram,
-        report_posted: !!fresh.report_message_id,
-        github_created: !!fresh.github_comment_id,
-        github_url: fresh.github_comment_url,
-      });
-    } catch (e) {
-      log.error("resubmit_idea_from_scratch_failed", e, { ideaId: id });
-      return json({ ok: false, error: "server" }, { status: 500 });
+  try {
+    const { row: fresh, telegram } = await resendIdeaToTelegram(env, id);
+    if (telegram !== "posted" || !fresh.report_message_id) {
+      return json({ ok: false, error: "telegram_resubmit_failed" }, { status: 502 });
     }
+    return json({
+      ok: true,
+      public_id: ideaPublicId(fresh),
+      telegram,
+      report_posted: true,
+      github_created: !!fresh.github_comment_id,
+      github_url: fresh.github_comment_url,
+    });
+  } catch (e) {
+    log.error("resubmit_idea_failed", e, { ideaId: id });
+    return json({ ok: false, error: "server" }, { status: 500 });
   }
-
-  // Case B: channel ticket exists — repost the idea Rich Message into the
-  // existing Telegram comments and retry only attachments that never posted.
-  let mirrorId = row.discussion_message_id ?? await waitForIdeaDiscussionMirror(env, row.channel_message_id, 3000);
-
-  // Legacy recovery mirrors the bug flow exactly: if the original discussion
-  // mirror can't be recovered, repost the SAME idea ticket to the channel,
-  // wait for its new auto-forwarded discussion root, then continue there.
-  if (!mirrorId) {
-    const replacementChannelMessageId = await postIdeaChannelTicket(env, row);
-    mirrorId = await waitForIdeaDiscussionMirror(env, replacementChannelMessageId, 8000);
-    if (!mirrorId) return json({ ok: false, error: "discussion_mirror_missing_after_repost" }, { status: 409 });
-    await setIdeaTelegramLinkage(env, row.id, replacementChannelMessageId, mirrorId, mirrorId);
-    row = { ...row, channel_message_id: replacementChannelMessageId, discussion_message_id: mirrorId, discussion_thread_id: mirrorId };
-  } else if (!row.discussion_message_id) {
-    await setIdeaTelegramLinkage(env, row.id, row.channel_message_id, mirrorId, mirrorId);
-    row = { ...row, discussion_message_id: mirrorId, discussion_thread_id: mirrorId };
-  } else if (!row.discussion_thread_id) {
-    await setIdeaTelegramLinkage(env, row.id, row.channel_message_id, row.discussion_message_id, row.discussion_message_id);
-    row = { ...row, discussion_thread_id: row.discussion_message_id };
-  }
-
-  await postIdeaReportToThread(env, row, mirrorId);
-  const atts = await listIdeaAttachments(env, row.id);
-  for (const a of atts) {
-    if (a.posted_message_id) continue;
-    try {
-      let posted: number | null = null;
-      if (a.r2_key) {
-        const obj = await env.ATTACHMENTS.get(a.r2_key);
-        if (!obj) continue;
-        posted = await postIdeaR2AttachmentToThread(env, row, await obj.arrayBuffer(), a.mime_type ?? "application/octet-stream", a.file_name ?? "attachment");
-      } else if (a.telegram_file_id) {
-        posted = await postIdeaTelegramAttachmentToThread(env, row, a.kind, a.telegram_file_id);
-      }
-      if (posted) await setIdeaAttachmentPostedMessage(env, a.id, posted);
-    } catch (e) {
-      log.error("resubmit_idea_attachment_post_failed_nonfatal", e, {
-        ideaId: row.id,
-        attachmentId: a.id,
-        kind: a.kind,
-        mime: a.mime_type,
-        fileName: a.file_name,
-      });
-    }
-  }
-  return json({ ok: true });
 }
 
 // GET /api/mybeta-feedback/:id — full detail of one beta feedback submission.
