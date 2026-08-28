@@ -2,7 +2,7 @@
 // All endpoints validate Telegram initData server-side; the browser is
 // never trusted to identify itself.
 
-import type { Env } from "../config";
+import { type Env, isAdmin } from "../config";
 import { validateInitData } from "../telegram/initdata";
 import { createBug, resendBugToTelegram, type IncomingAttachment } from "../bugs/service";
 import { createIdea, resendIdeaToTelegram, type IncomingIdeaAttachment } from "../ideas/service";
@@ -10,10 +10,10 @@ import { createBetaFeedback, resendBetaFeedbackToTelegram, type IncomingBetaFeed
 import { listIdeasByReporter, getIdea, listIdeaAttachments, setIdeaAttachmentPostedMessage, setIdeaTelegramLinkage } from "../db/queries";
 import { ideaPublicId } from "../ideas/formatting";
 import { betaFeedbackPublicId } from "../beta/formatting";
-import { postChannelTicket, postReportToThread, postR2AttachmentToThread, postTelegramAttachmentToThread, waitForDiscussionMirror, postIdeaChannelTicket, postIdeaReportToThread, postIdeaR2AttachmentToThread, postIdeaTelegramAttachmentToThread, waitForIdeaDiscussionMirror, postBetaFeedbackChannelTicket, postBetaFeedbackReportToThread, postBetaFeedbackR2AttachmentToThread, postBetaFeedbackTelegramAttachmentToThread, waitForBetaFeedbackDiscussionMirror } from "../telegram/channel";
+import { postChannelTicket, postReportToThread, postR2AttachmentToThread, postTelegramAttachmentToThread, waitForDiscussionMirror, postIdeaChannelTicket, postIdeaReportToThread, postIdeaR2AttachmentToThread, postIdeaTelegramAttachmentToThread, waitForIdeaDiscussionMirror } from "../telegram/channel";
 import { APPS, CATEGORIES, SEVERITIES, FREQUENCIES, CATEGORY_IDS, SEVERITY_IDS } from "../bugs/constants";
 import { BETA_FEEDBACK_TYPE_IDS, BETA_FEEDBACK_TYPES, BETA_OVERALL_EXPERIENCE_IDS, BETA_OVERALL_EXPERIENCES, BETA_WOULD_USE_IDS, BETA_WOULD_USE_OPTIONS } from "../beta/constants";
-import { listBugsByReporter, getBug, listAttachments, setAttachmentPostedMessage, setBugTelegramLinkage, listBetaFeedbackByReporter, getBetaFeedback, listBetaFeedbackAttachments, setBetaFeedbackAttachmentPostedMessage, setBetaFeedbackTelegramLinkage } from "../db/queries";
+import { listBugsByReporter, getBug, listAttachments, setAttachmentPostedMessage, setBugTelegramLinkage, listBetaFeedbackByReporter, getBetaFeedback, listBetaFeedbackAttachments } from "../db/queries";
 import { publicIdOf } from "../bugs/formatting";
 import { log } from "../util/log";
 
@@ -190,7 +190,7 @@ export async function handleMyIdeaDetail(env: Env, req: Request, id: number): Pr
   const atts = await listIdeaAttachments(env, row.id);
   return json({
     ok: true,
-    idea: { ...row, public_id: ideaPublicId(row) },
+    idea: { ...row, public_id: ideaPublicId(row), can_resubmit: isAdmin(env, user.id) },
     attachments: atts.map((a) => ({ id: a.id, kind: a.kind, file_name: a.file_name, mime_type: a.mime_type, size_bytes: a.size_bytes, posted_message_id: a.posted_message_id })),
   });
 }
@@ -204,6 +204,7 @@ export async function handleResubmitIdea(env: Env, req: Request, id: number): Pr
 
   let row = await getIdea(env, id);
   if (!row || row.reporter_tg_id !== user.id) return json({ ok: false, error: "not_found" }, { status: 404 });
+  if (!isAdmin(env, user.id)) return json({ ok: false, error: "forbidden" }, { status: 403 });
 
   // Case A: original submission never posted the channel ticket at all —
   // delegate to the from-scratch idea resender, matching bug behavior.
@@ -283,7 +284,7 @@ export async function handleMyBetaFeedbackDetail(env: Env, req: Request, id: num
   const atts = await listBetaFeedbackAttachments(env, row.id);
   return json({
     ok: true,
-    beta_feedback: { ...row, public_id: betaFeedbackPublicId(row) },
+    beta_feedback: { ...row, public_id: betaFeedbackPublicId(row), can_resubmit: isAdmin(env, user.id) },
     attachments: atts.map((a) => ({
       id: a.id,
       kind: a.kind,
@@ -304,68 +305,23 @@ export async function handleResubmitBetaFeedback(env: Env, req: Request, id: num
 
   let row = await getBetaFeedback(env, id);
   if (!row || row.reporter_tg_id !== user.id) return json({ ok: false, error: "not_found" }, { status: 404 });
+  if (!isAdmin(env, user.id)) return json({ ok: false, error: "forbidden" }, { status: 403 });
 
-  if (!row.channel_message_id) {
-    try {
-      const { row: fresh, telegram } = await resendBetaFeedbackToTelegram(env, id);
-      return json({
-        ok: true,
-        public_id: betaFeedbackPublicId(fresh),
-        telegram,
-        report_posted: !!fresh.report_message_id,
-      });
-    } catch (e) {
-      log.error("resubmit_beta_feedback_from_scratch_failed", e, { betaFeedbackId: id });
-      return json({ ok: false, error: "server" }, { status: 500 });
+  try {
+    const { row: fresh, telegram } = await resendBetaFeedbackToTelegram(env, id, { force: true });
+    if (telegram !== "posted" || !fresh.channel_message_id || !fresh.report_message_id) {
+      return json({ ok: false, error: "telegram_resubmit_failed" }, { status: 502 });
     }
+    return json({
+      ok: true,
+      public_id: betaFeedbackPublicId(fresh),
+      telegram,
+      report_posted: true,
+    });
+  } catch (e) {
+    log.error("resubmit_beta_feedback_force_repost_failed", e, { betaFeedbackId: id });
+    return json({ ok: false, error: "server" }, { status: 500 });
   }
-
-  let mirrorId = row.discussion_message_id ?? await waitForBetaFeedbackDiscussionMirror(env, row.channel_message_id, 3000);
-  if (!mirrorId) {
-    const replacementChannelMessageId = await postBetaFeedbackChannelTicket(env, row);
-    mirrorId = await waitForBetaFeedbackDiscussionMirror(env, replacementChannelMessageId, 8000);
-    if (!mirrorId) return json({ ok: false, error: "discussion_mirror_missing_after_repost" }, { status: 409 });
-    await setBetaFeedbackTelegramLinkage(env, row.id, replacementChannelMessageId, mirrorId, mirrorId);
-    row = { ...row, channel_message_id: replacementChannelMessageId, discussion_message_id: mirrorId, discussion_thread_id: mirrorId };
-  } else if (!row.discussion_message_id) {
-    await setBetaFeedbackTelegramLinkage(env, row.id, row.channel_message_id, mirrorId, mirrorId);
-    row = { ...row, discussion_message_id: mirrorId, discussion_thread_id: mirrorId };
-  } else if (!row.discussion_thread_id) {
-    await setBetaFeedbackTelegramLinkage(env, row.id, row.channel_message_id, row.discussion_message_id, row.discussion_message_id);
-    row = { ...row, discussion_thread_id: row.discussion_message_id };
-  }
-
-  await postBetaFeedbackReportToThread(env, row, mirrorId);
-  const atts = await listBetaFeedbackAttachments(env, row.id);
-  for (const a of atts) {
-    if (a.posted_message_id) continue;
-    try {
-      let posted: number | null = null;
-      if (a.r2_key) {
-        const obj = await env.ATTACHMENTS.get(a.r2_key);
-        if (!obj) continue;
-        posted = await postBetaFeedbackR2AttachmentToThread(
-          env,
-          row,
-          await obj.arrayBuffer(),
-          a.mime_type ?? "application/octet-stream",
-          a.file_name ?? "attachment",
-        );
-      } else if (a.telegram_file_id) {
-        posted = await postBetaFeedbackTelegramAttachmentToThread(env, row, a.kind, a.telegram_file_id);
-      }
-      if (posted) await setBetaFeedbackAttachmentPostedMessage(env, a.id, posted);
-    } catch (e) {
-      log.error("resubmit_beta_feedback_attachment_post_failed_nonfatal", e, {
-        betaFeedbackId: row.id,
-        attachmentId: a.id,
-        kind: a.kind,
-        mime: a.mime_type,
-        fileName: a.file_name,
-      });
-    }
-  }
-  return json({ ok: true });
 }
 
 // POST /api/submit-idea — creates a Feature Idea (Telegram + GitHub Discussion).
@@ -591,6 +547,7 @@ export async function handleMyBugs(env: Env, req: Request): Promise<Response> {
     listIdeasByReporter(env, user.id, 50),
     listBetaFeedbackByReporter(env, user.id, 50),
   ]);
+  const canResubmit = isAdmin(env, user.id);
   return json({
     ok: true,
     // Unified feed: bugs + ideas, most-recent first. Frontend keys on `type`.
@@ -605,6 +562,7 @@ export async function handleMyBugs(env: Env, req: Request): Promise<Response> {
         created_at: r.created_at,
         telegram_posted: !!r.channel_message_id,
         report_posted: !!r.report_message_id,
+        can_resubmit: canResubmit,
         github_created: !!r.github_issue_number,
         github_url: r.github_issue_url,
       })),
@@ -618,6 +576,7 @@ export async function handleMyBugs(env: Env, req: Request): Promise<Response> {
         created_at: r.created_at,
         telegram_posted: !!r.channel_message_id,
         report_posted: !!r.report_message_id,
+        can_resubmit: canResubmit,
         github_created: !!r.github_comment_id,
         github_url: r.github_comment_url,
       })),
@@ -631,6 +590,7 @@ export async function handleMyBugs(env: Env, req: Request): Promise<Response> {
         created_at: r.created_at,
         telegram_posted: !!r.channel_message_id,
         report_posted: !!r.report_message_id,
+        can_resubmit: canResubmit,
         github_created: false,
         github_url: null,
       })),
@@ -648,6 +608,7 @@ export async function handleMyBugs(env: Env, req: Request): Promise<Response> {
       // render the "Resend to Telegram" affordance.
       telegram_posted: !!r.channel_message_id,
       report_posted:   !!r.report_message_id,
+      can_resubmit:    canResubmit,
       github_created:  !!r.github_issue_number,
       github_url:      r.github_issue_url,
     })),
@@ -664,7 +625,7 @@ export async function handleMyBugDetail(env: Env, req: Request, id: number): Pro
   const atts = await listAttachments(env, row.id);
   return json({
     ok: true,
-    bug: { ...row, public_id: publicIdOf(row) },
+    bug: { ...row, public_id: publicIdOf(row), can_resubmit: isAdmin(env, user.id) },
     attachments: atts.map((a) => ({ id: a.id, kind: a.kind, file_name: a.file_name, mime_type: a.mime_type, size_bytes: a.size_bytes, posted_message_id: a.posted_message_id })),
   });
 }
@@ -676,6 +637,7 @@ export async function handleResubmitBug(env: Env, req: Request, id: number): Pro
   catch { return json({ ok: false, error: "auth" }, { status: 401 }); }
   let row = await getBug(env, id);
   if (!row || row.reporter_tg_id !== user.id) return json({ ok: false, error: "not_found" }, { status: 404 });
+  if (!isAdmin(env, user.id)) return json({ ok: false, error: "forbidden" }, { status: 403 });
 
   // Case A: original submission never posted the channel ticket at all —
   // delegate to the from-scratch resender, which posts channel + mirror +

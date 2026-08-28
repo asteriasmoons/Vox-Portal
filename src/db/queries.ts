@@ -527,6 +527,23 @@ export async function setBetaFeedbackReportMessageId(
     .run();
 }
 
+export async function clearBetaFeedbackTelegramLinkage(env: Env, betaFeedbackId: number): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE beta_feedback SET
+       channel_message_id = NULL,
+       discussion_message_id = NULL,
+       discussion_thread_id = NULL,
+       report_message_id = NULL,
+       updated_at = ?
+     WHERE id = ?`,
+  )
+    .bind(Math.floor(Date.now() / 1000), betaFeedbackId)
+    .run();
+  await env.DB.prepare(`UPDATE beta_feedback_attachments SET posted_message_id = NULL WHERE beta_feedback_id = ?`)
+    .bind(betaFeedbackId)
+    .run();
+}
+
 export async function updateBetaFeedbackStatus(
   env: Env,
   betaFeedbackId: number,

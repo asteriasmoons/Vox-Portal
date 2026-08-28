@@ -12,6 +12,7 @@ import {
   listBetaFeedbackAttachments,
   nextBetaFeedbackNumber,
   setBetaFeedbackAttachmentPostedMessage,
+  clearBetaFeedbackTelegramLinkage,
   setBetaFeedbackTelegramLinkage,
   updateBetaFeedbackStatus as dbUpdateBetaFeedbackStatus,
 } from "../db/queries";
@@ -181,9 +182,20 @@ async function persistAttachment(
 export async function resendBetaFeedbackToTelegram(
   env: Env,
   betaFeedbackId: number,
+  opts: { force?: boolean } = {},
 ): Promise<{ row: BetaFeedbackRow; telegram: "posted" | "already_posted" | "failed" }> {
   let row = await getBetaFeedback(env, betaFeedbackId);
   if (!row) throw new Error("beta_feedback_not_found");
+
+  if (row.channel_message_id && !opts.force) {
+    log.info("beta_feedback_resend_skipped_channel_present", { betaFeedbackId });
+    return { row, telegram: "already_posted" };
+  }
+
+  if (opts.force && row.channel_message_id) {
+    await clearBetaFeedbackTelegramLinkage(env, betaFeedbackId);
+    row = (await getBetaFeedback(env, betaFeedbackId))!;
+  }
 
   let channelMessageId = row.channel_message_id;
   if (!channelMessageId) {

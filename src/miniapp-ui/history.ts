@@ -15,6 +15,7 @@ interface BugSummary {
   // Delivery state (added by handleMyBugs). Missing on older API responses.
   telegram_posted?: boolean;
   report_posted?: boolean;
+  can_resubmit?: boolean;
   github_created?: boolean;
   github_url?: string | null;
 }
@@ -100,6 +101,7 @@ export async function loadHistory(): Promise<void> {
     created_at: number;
     telegram_posted?: boolean;
     report_posted?: boolean;
+    can_resubmit?: boolean;
     github_created?: boolean;
     github_url?: string | null;
   }
@@ -184,15 +186,18 @@ function renderRow(bug: BugSummary & { type?: "bug" | "idea" | "beta"; app?: str
     label.textContent = bug.telegram_posted === false
       ? "⚠ Not sent to Telegram yet"
       : "⚠ Report didn't finish posting";
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "resend-chip";
-    btn.textContent = "Resend";
-    btn.onclick = (ev) => {
-      ev.stopPropagation();
-      void resendFromRow(bug.id, isIdea ? "idea" : isBeta ? "beta" : "bug", btn, label);
-    };
-    banner.append(label, btn);
+    banner.append(label);
+    if (bug.can_resubmit === true) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.className = "resend-chip";
+      btn.textContent = "Resend";
+      btn.onclick = (ev) => {
+        ev.stopPropagation();
+        void resendFromRow(bug.id, isIdea ? "idea" : isBeta ? "beta" : "bug", btn, label);
+      };
+      banner.append(btn);
+    }
     li.appendChild(banner);
   }
 
@@ -337,6 +342,11 @@ function renderIdeaDetail(idea: Record<string, unknown>, attachments: Attachment
 
   const rb = document.getElementById("detail-resubmit") as HTMLButtonElement | null;
   if (rb) {
+    if (idea.can_resubmit !== true) {
+      rb.style.display = "none";
+      rb.onclick = null;
+      return;
+    }
     rb.style.display = "";
     rb.textContent = "Resubmit to Telegram";
     rb.disabled = false;
@@ -419,6 +429,11 @@ function renderBetaFeedbackDetail(beta: Record<string, unknown>, attachments: At
 
   const rb = document.getElementById("detail-resubmit") as HTMLButtonElement | null;
   if (rb) {
+    if (beta.can_resubmit !== true) {
+      rb.style.display = "none";
+      rb.onclick = null;
+      return;
+    }
     rb.style.display = "";
     rb.textContent = "Resubmit to Telegram";
     rb.disabled = false;
@@ -452,7 +467,10 @@ function renderDetail(bug: BugDetail, attachments: AttachmentDetail[]): void {
   if (bc) bc.previousElementSibling?.remove();
   if (bc) bc.remove();
   const rb = document.getElementById("detail-resubmit") as HTMLButtonElement | null;
-  if (rb) rb.style.display = "";
+  if (rb) {
+    rb.style.display = bug.can_resubmit === true ? "" : "none";
+    rb.onclick = null;
+  }
   relabelGridCell("detail-category", "Category");
   relabelGridCell("detail-severity", "Severity");
   relabelGridCell("detail-frequency", "Frequency");
@@ -486,6 +504,12 @@ function renderDetail(bug: BugDetail, attachments: AttachmentDetail[]): void {
   }
 
   const button = requireEl<HTMLButtonElement>("#detail-resubmit");
+  if (bug.can_resubmit !== true) {
+    button.style.display = "none";
+    button.onclick = null;
+    return;
+  }
+  button.style.display = "";
   button.onclick = () => void resubmitBug(bug.id, button);
 }
 function renderAttachment(a: AttachmentDetail): HTMLLIElement {
