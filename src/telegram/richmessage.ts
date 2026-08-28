@@ -345,7 +345,7 @@ export function ideaManagementButtonBlocks(idea: IdeaRow): unknown[] {
   // View on GitHub (link button — no callback).
   if (idea.github_comment_url) {
     rows.push(buttonsRow([
-      { text: "🔗 View on GitHub", style: "link", url: idea.github_comment_url },
+      { text: "View on GitHub", style: "link", url: idea.github_comment_url },
     ]));
   }
 

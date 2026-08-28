@@ -41,7 +41,7 @@ import {
   renderIdeaReporterDm, renderIdeaSubmissionConfirmation, ideaPublicId,
 } from "./formatting";
 import {
-  resolveIdeaDiscussion, IDEA_NOTIFY_ON_STATUS, ideaStatusMeta, type IdeaStatusId,
+  resolveIdeaDiscussion, ideaStatusMeta, type IdeaStatusId,
 } from "./constants";
 import { addDiscussionComment } from "../github/discussions";
 import { log } from "../util/log";
@@ -172,11 +172,24 @@ async function maybePostGitHubDiscussion(
     });
     const fresh = await getIdea(env, row.id);
     if (fresh) await refreshIdeaRichReport(env, fresh);
-    if (row.discussion_thread_id) {
+    const threadRow = fresh ?? row;
+    if (threadRow.discussion_thread_id) {
+      const replyToMessageId = threadRow.report_message_id ?? threadRow.discussion_message_id ?? threadRow.discussion_thread_id;
       try {
         await sendMessage(env, discussionChatId(env),
-          `🔗 <b>GitHub Discussion:</b> <a href="${res.comment_url}">comment</a>`,
-          { parse_mode: "HTML", message_thread_id: row.discussion_thread_id });
+          `GitHub Discussion\n${res.comment_url}`,
+          {
+            parse_mode: "HTML",
+            message_thread_id: threadRow.discussion_thread_id,
+            reply_parameters: { message_id: replyToMessageId },
+            disable_web_page_preview: false,
+            link_preview_options: {
+              is_disabled: false,
+              url: res.comment_url,
+              prefer_large_media: true,
+              show_above_text: false,
+            },
+          });
       } catch (e) { log.warn("idea_crossref_failed", { ideaId: row.id, err: String(e) }); }
     }
   } else {
@@ -345,14 +358,19 @@ export async function changeIdeaStatus(
     const line = from
       ? `${from.emoji} ${from.label} → ${to.emoji} ${to.label}`
       : `→ ${to.emoji} ${to.label}`;
+    const replyToMessageId = row.report_message_id ?? row.discussion_message_id ?? row.discussion_thread_id;
     try {
       await sendMessage(env, discussionChatId(env),
         `<b>IDEA STATUS UPDATE</b>\n${esc(line)}${reason ? `\n\n<i>${esc(reason)}</i>` : ""}`,
-        { parse_mode: "HTML", message_thread_id: row.discussion_thread_id });
+        {
+          parse_mode: "HTML",
+          message_thread_id: row.discussion_thread_id,
+          reply_parameters: { message_id: replyToMessageId },
+        });
     } catch (e) { log.warn("idea_history_post_failed", { ideaId, err: String(e) }); }
   }
 
-  if (IDEA_NOTIFY_ON_STATUS.includes(toStatus) && change.from !== toStatus) {
+  if (change.from !== toStatus) {
     try {
       await sendMessage(env, row.reporter_tg_id, renderIdeaReporterDm(row, change.from), { parse_mode: "HTML" });
     } catch (e) { log.warn("idea_reporter_dm_failed", { ideaId, err: String(e) }); }

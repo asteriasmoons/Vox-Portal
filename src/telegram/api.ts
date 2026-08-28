@@ -89,6 +89,13 @@ export interface SendMessageOptions {
   message_thread_id?: number;
   disable_web_page_preview?: boolean;
   reply_parameters?: { message_id: number; chat_id?: number | string };
+  link_preview_options?: {
+    is_disabled?: boolean;
+    url?: string;
+    prefer_small_media?: boolean;
+    prefer_large_media?: boolean;
+    show_above_text?: boolean;
+  };
 }
 
 export interface TelegramMessage {
@@ -280,6 +287,7 @@ export async function sendMessage(
     text,
     parse_mode: opts.parse_mode ?? "HTML",
     disable_web_page_preview: opts.disable_web_page_preview ?? true,
+    link_preview_options: opts.link_preview_options,
     reply_markup: opts.reply_markup,
     message_thread_id: opts.message_thread_id,
     reply_parameters: opts.reply_parameters,
