@@ -137,12 +137,13 @@ async function onCallbackQuery(env: Env, cq: NonNullable<Update["callback_query"
     from_id: cq.from.id,
     chat_id: cq.message?.chat.id,
     message_id: cq.message?.message_id,
+    ephemeral_message_id: cq.message?.ephemeral_message_id,
   });
   const fromTgId = cq.from.id;
   // For ephemeral messages the regular `message_id` is 0/absent — the id
   // that matters is `ephemeral_message_id`. We accept either.
   const anyMsg = cq.message as (typeof cq.message) & { ephemeral_message_id?: number } | undefined;
-  const messageId = anyMsg?.message_id || anyMsg?.ephemeral_message_id || 0;
+  const messageId = anyMsg?.ephemeral_message_id || anyMsg?.message_id || 0;
   const chatId = cq.message?.chat.id;
   if (chatId == null) return;
 
@@ -165,7 +166,8 @@ async function onCallbackQuery(env: Env, cq: NonNullable<Update["callback_query"
     data.startsWith("rich:") ||
     data.startsWith("menu:") ||
     data.startsWith("act:") ||
-    data.startsWith("idea:");
+    data.startsWith("idea:") ||
+    data.startsWith("beta:");
   if (isAdminCallback && cq.message?.chat.id === discussionChatId(env)) {
     await handleAdminCallback({
       env,

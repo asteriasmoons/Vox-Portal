@@ -6,6 +6,9 @@
 //   rich:act:<bugId>:severity:<severityId>
 //   rich:act:<bugId>:category:<categoryId>
 //   rich:back:<bugId>                     (dismiss ephemeral picker)
+//   beta:menu:<betaFeedbackId>:status
+//   beta:act:<betaFeedbackId>:status:<statusId>
+//   beta:back:<betaFeedbackId>            (dismiss ephemeral picker)
 //   noop                                  (fired by disabled current-selection buttons)
 //
 // Every management action:
@@ -37,6 +40,7 @@ import {
   buildSeverityPickerRichMessage,
   buildCategoryPickerRichMessage,
   buildNotePromptRichMessage,
+  buildBetaFeedbackStatusPickerRichMessage,
 } from "./richmessage";
 import { refreshRichReport } from "./channel";
 import {
@@ -65,6 +69,7 @@ interface CallbackCtx {
 // selection or Back can clean it up. We stash the id in KV under a short-
 // TTL key. The router uses this to delete the picker when a choice is made.
 const EPH_KEY = (bugId: number, tgId: number) => `eph:${bugId}:${tgId}`;
+const BETA_EPH_KEY = (betaFeedbackId: number, tgId: number) => `beta_eph:${betaFeedbackId}:${tgId}`;
 
 async function storeEphemeral(env: Env, bugId: number, tgId: number, ephId: number) {
   await env.SESSIONS.put(EPH_KEY(bugId, tgId), String(ephId), { expirationTtl: 600 });
@@ -73,6 +78,16 @@ async function takeEphemeral(env: Env, bugId: number, tgId: number): Promise<num
   const raw = await env.SESSIONS.get(EPH_KEY(bugId, tgId));
   if (!raw) return null;
   await env.SESSIONS.delete(EPH_KEY(bugId, tgId));
+  const n = Number(raw);
+  return Number.isFinite(n) ? n : null;
+}
+async function storeBetaEphemeral(env: Env, betaFeedbackId: number, tgId: number, ephId: number) {
+  await env.SESSIONS.put(BETA_EPH_KEY(betaFeedbackId, tgId), String(ephId), { expirationTtl: 600 });
+}
+async function takeBetaEphemeral(env: Env, betaFeedbackId: number, tgId: number): Promise<number | null> {
+  const raw = await env.SESSIONS.get(BETA_EPH_KEY(betaFeedbackId, tgId));
+  if (!raw) return null;
+  await env.SESSIONS.delete(BETA_EPH_KEY(betaFeedbackId, tgId));
   const n = Number(raw);
   return Number.isFinite(n) ? n : null;
 }
@@ -351,9 +366,11 @@ async function syncIdeaStatusToGitHub(env: Env, idea: import("../db/types").Idea
 }
 
 // ── Beta Feedback callback handler ─────────────────────
-// Grammar: beta:act:<betaFeedbackId>:status:<statusId>
+// Grammar: beta:menu:<betaFeedbackId>:status
+//          beta:act:<betaFeedbackId>:status:<statusId>
+//          beta:back:<betaFeedbackId>
 async function handleBetaFeedbackCallback(ctx: CallbackCtx): Promise<boolean> {
-  const { env, data, fromTgId, callbackQueryId } = ctx;
+  const { env, data, fromTgId, callbackQueryId, chatId, messageId } = ctx;
   if (!isAdmin(env, fromTgId)) {
     await answerCallbackQuery(env, callbackQueryId, "Not authorized.", true);
     return true;
@@ -361,6 +378,51 @@ async function handleBetaFeedbackCallback(ctx: CallbackCtx): Promise<boolean> {
   const parts = data.split(":");
   const betaFeedbackId = Number(parts[2]);
   if (!Number.isFinite(betaFeedbackId)) return false;
+
+  if (data.startsWith("beta:back:")) {
+    await dismissBetaPicker(env, chatId, betaFeedbackId, fromTgId, messageId);
+    await answerCallbackQuery(env, callbackQueryId);
+    return true;
+  }
+
+  const { getBetaFeedback } = await import("../db/queries");
+  const betaFeedback = await getBetaFeedback(env, betaFeedbackId);
+  if (!betaFeedback) {
+    await answerCallbackQuery(env, callbackQueryId, "Beta feedback not found.", true);
+    return true;
+  }
+
+  if (data.startsWith("beta:menu:")) {
+    const what = parts[3];
+    if (what !== "status") {
+      await answerCallbackQuery(env, callbackQueryId, "Unknown beta feedback menu.", true);
+      return true;
+    }
+    const ephemeral: EphemeralMessageParameters = {
+      receiver_user_id: fromTgId,
+      callback_query_id: callbackQueryId,
+      replace_callback_query_message: true,
+    };
+    try {
+      const eph = await sendEphemeralRichMessage(
+        env,
+        chatId,
+        ephemeral,
+        buildBetaFeedbackStatusPickerRichMessage(betaFeedback),
+      );
+      const ephId = eph.ephemeral_message_id ?? eph.message_id ?? 0;
+      if (ephId) await storeBetaEphemeral(env, betaFeedback.id, fromTgId, ephId);
+    } catch (e) {
+      log.error("beta_feedback_ephemeral_picker_send_failed", e, { betaFeedbackId, what });
+      await answerCallbackQuery(env, callbackQueryId, "Couldn't open menu.", true);
+    }
+    return true;
+  }
+
+  if (!data.startsWith("beta:act:")) {
+    await answerCallbackQuery(env, callbackQueryId, "Unknown beta feedback action.", true);
+    return true;
+  }
 
   const verb = parts[3];
   const value = parts[4];
@@ -379,8 +441,34 @@ async function handleBetaFeedbackCallback(ctx: CallbackCtx): Promise<boolean> {
     await answerCallbackQuery(env, callbackQueryId, "Beta feedback not found.", true);
     return true;
   }
+  await dismissBetaPicker(env, chatId, betaFeedbackId, fromTgId, messageId);
   await answerCallbackQuery(env, callbackQueryId, `Beta Feedback → ${betaStatusMeta(value).label}`);
   return true;
+}
+
+async function dismissBetaPicker(
+  env: Env,
+  chatId: number,
+  betaFeedbackId: number,
+  tgId: number,
+  tappedMessageId?: number,
+) {
+  let ephId = tappedMessageId && tappedMessageId > 0 ? tappedMessageId : 0;
+  if (!ephId) {
+    const stored = await takeBetaEphemeral(env, betaFeedbackId, tgId);
+    if (stored) ephId = stored;
+  } else {
+    await env.SESSIONS.delete(BETA_EPH_KEY(betaFeedbackId, tgId));
+  }
+  if (!ephId) {
+    log.warn("beta_feedback_dismiss_picker_no_id", { betaFeedbackId, tgId });
+    return;
+  }
+  try {
+    await deleteEphemeralMessage(env, chatId, tgId, ephId);
+  } catch (e) {
+    log.warn("beta_feedback_ephemeral_delete_failed", { betaFeedbackId, ephId, err: String(e) });
+  }
 }
 
 // ── Admin commands typed inside a bug's discussion thread ─

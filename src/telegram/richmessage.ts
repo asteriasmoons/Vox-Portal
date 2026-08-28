@@ -449,22 +449,11 @@ export function buildBetaFeedbackRichMessage(row: BetaFeedbackRow): { blocks: un
 
 export function betaFeedbackManagementButtonBlocks(row: BetaFeedbackRow): unknown[] {
   const id = row.id;
-  const cb = (status: string) => `beta:act:${id}:status:${status}`;
-  const rows: unknown[] = [];
-  let buttons: RichMessageButton[] = [];
-  for (const status of BETA_STATUSES) {
-    buttons.push(
-      status.id === row.status
-        ? disabledButton(status.label)
-        : { text: status.label, callback_data: cb(status.id) },
-    );
-    if (buttons.length === 2) {
-      rows.push(buttonsRow(buttons));
-      buttons = [];
-    }
-  }
-  if (buttons.length) rows.push(buttonsRow(buttons));
-  return rows;
+  return [
+    buttonsRow([
+      { text: "Status", style: "primary", callback_data: `beta:menu:${id}:status` },
+    ]),
+  ];
 }
 
 export function buildBetaFeedbackStatusPickerRichMessage(row: BetaFeedbackRow): { blocks: unknown[] } {
@@ -486,5 +475,6 @@ export function buildBetaFeedbackStatusPickerRichMessage(row: BetaFeedbackRow): 
     }
   }
   if (buttons.length) rows.push(buttonsRow(buttons));
+  rows.push(buttonsRow([{ text: "‹ Back", callback_data: `beta:back:${row.id}` }]));
   return { blocks: [...blocks, ...rows] };
 }
