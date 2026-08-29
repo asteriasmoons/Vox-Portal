@@ -74,7 +74,7 @@ export default {
     if (betaFeedbackResubmitMatch && req.method === "POST") return handleResubmitBetaFeedback(env, req, Number(betaFeedbackResubmitMatch[1]));
     const betaFeedbackAttachmentMatch = url.pathname.match(/^\/attachments\/beta-feedback\/(\d+)(?:\/.*)?$/);
     if (betaFeedbackAttachmentMatch && req.method === "GET") {
-      return handleBetaFeedbackAttachment(env, Number(betaFeedbackAttachmentMatch[1]));
+      return handleBetaFeedbackAttachment(env, req, Number(betaFeedbackAttachmentMatch[1]));
     }
 
     // ── One-shot admin: register slash-command list with Telegram ──

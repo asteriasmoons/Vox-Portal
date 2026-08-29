@@ -556,19 +556,99 @@ function betaFeedbackGithubResult(row: {
     : { status: "not_attempted" as const };
 }
 
-export async function handleBetaFeedbackAttachment(env: Env, attachmentId: number): Promise<Response> {
+export async function handleBetaFeedbackAttachment(env: Env, req: Request, attachmentId: number): Promise<Response> {
   const row = await getBetaFeedbackAttachment(env, attachmentId);
   if (!row?.r2_key) return new Response("not found", { status: 404 });
   const obj = await env.ATTACHMENTS.get(row.r2_key);
   if (!obj?.body) return new Response("not found", { status: 404 });
   const name = row.file_name || `attachment-${attachmentId}`;
+  const mime = row.mime_type || obj.httpMetadata?.contentType || "application/octet-stream";
+  const wantsRounded = new URL(req.url).searchParams.get("variant") === "rounded";
+  if (wantsRounded && mime.toLowerCase().startsWith("image/")) {
+    const bytes = await obj.arrayBuffer();
+    return new Response(roundedImageSvg(bytes, mime, name), {
+      headers: {
+        "content-type": "image/svg+xml; charset=utf-8",
+        "cache-control": "public, max-age=31536000, immutable",
+        "content-disposition": `inline; filename="${sanitizeHeaderValue(name)}.svg"`,
+      },
+    });
+  }
   return new Response(obj.body, {
     headers: {
-      "content-type": row.mime_type || obj.httpMetadata?.contentType || "application/octet-stream",
+      "content-type": mime,
       "cache-control": "public, max-age=31536000, immutable",
       "content-disposition": `inline; filename="${sanitizeHeaderValue(name)}"; filename*=UTF-8''${encodeURIComponent(name)}`,
     },
   });
+}
+
+function roundedImageSvg(bytes: ArrayBuffer, mime: string, name: string): string {
+  const dims = imageDimensions(bytes, mime) ?? { width: 1, height: 1 };
+  const radius = Math.max(1, Math.round(Math.min(dims.width, dims.height) * 0.055));
+  const base64 = arrayBufferToBase64(bytes);
+  return [
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${dims.width}" height="${dims.height}" viewBox="0 0 ${dims.width} ${dims.height}">`,
+    "  <defs>",
+    `    <clipPath id="r"><rect x="0" y="0" width="${dims.width}" height="${dims.height}" rx="${radius}" ry="${radius}"/></clipPath>`,
+    "  </defs>",
+    `  <image href="data:${sanitizeSvgMime(mime)};base64,${base64}" width="${dims.width}" height="${dims.height}" preserveAspectRatio="xMidYMid slice" clip-path="url(#r)">`,
+    `    <title>${escapeSvgText(name)}</title>`,
+    "  </image>",
+    "</svg>",
+  ].join("\n");
+}
+
+function imageDimensions(bytes: ArrayBuffer, mime: string): { width: number; height: number } | null {
+  const view = new DataView(bytes);
+  const lowerMime = mime.toLowerCase();
+  if (lowerMime.includes("png") && bytes.byteLength >= 24) {
+    return { width: view.getUint32(16), height: view.getUint32(20) };
+  }
+  if (lowerMime.includes("gif") && bytes.byteLength >= 10) {
+    return { width: view.getUint16(6, true), height: view.getUint16(8, true) };
+  }
+  if (lowerMime.includes("jpeg") || lowerMime.includes("jpg")) {
+    return jpegDimensions(view);
+  }
+  return null;
+}
+
+function jpegDimensions(view: DataView): { width: number; height: number } | null {
+  if (view.byteLength < 4 || view.getUint16(0) !== 0xffd8) return null;
+  let offset = 2;
+  while (offset + 9 < view.byteLength) {
+    if (view.getUint8(offset) !== 0xff) return null;
+    const marker = view.getUint8(offset + 1);
+    const size = view.getUint16(offset + 2);
+    if (size < 2) return null;
+    if ((marker >= 0xc0 && marker <= 0xc3) || (marker >= 0xc5 && marker <= 0xc7) || (marker >= 0xc9 && marker <= 0xcb) || (marker >= 0xcd && marker <= 0xcf)) {
+      return { height: view.getUint16(offset + 5), width: view.getUint16(offset + 7) };
+    }
+    offset += 2 + size;
+  }
+  return null;
+}
+
+function arrayBufferToBase64(bytes: ArrayBuffer): string {
+  let binary = "";
+  const chunk = 0x8000;
+  const data = new Uint8Array(bytes);
+  for (let i = 0; i < data.length; i += chunk) {
+    binary += String.fromCharCode(...data.subarray(i, i + chunk));
+  }
+  return btoa(binary);
+}
+
+function sanitizeSvgMime(mime: string): string {
+  return /^image\/[a-z0-9.+-]+$/i.test(mime) ? mime : "image/png";
+}
+
+function escapeSvgText(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 interface IdeaSubmitPayload {

@@ -18,6 +18,7 @@ export interface BetaFeedbackAttachmentReference {
   mime_type: string | null;
   size_bytes: number | null;
   url?: string | null;
+  thumbnail_url?: string | null;
 }
 
 export function betaFeedbackPublicId(row: Pick<BetaFeedbackRow, "public_number">): string {
@@ -113,7 +114,7 @@ export function renderBetaFeedbackGitHubComment(
 
   parts.push(`---`);
   if (row.last_edited_at) {
-    parts.push(`_Edited ${formatTimestamp(row.last_edited_at)}_`);
+    parts.push(`_Edited ${formatGitHubTimestamp(row.last_edited_at)}_`);
   }
   parts.push(`_Submitted through the Voxiverse Telegram Mini App — ${betaFeedbackPublicId(row)}_`);
   return parts.join("\n\n");
@@ -206,7 +207,22 @@ function renderImageRows(images: BetaFeedbackAttachmentReference[]): string {
 function renderImageCell(att: BetaFeedbackAttachmentReference): string {
   const name = escapeHtmlAttr(att.file_name || `${att.kind}-${att.id}`);
   const url = escapeHtmlAttr(att.url ?? "");
-  return `<a href="${url}"><img src="${url}" width="150" alt="${name}"></a>`;
+  const thumbnailUrl = escapeHtmlAttr(att.thumbnail_url || att.url || "");
+  return `<a href="${url}"><img src="${thumbnailUrl}" width="150" alt="${name}"></a>`;
+}
+
+function formatGitHubTimestamp(unixSec: number): string {
+  const d = new Date(unixSec * 1000);
+  return d.toLocaleString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: "America/Chicago",
+    timeZoneName: "short",
+  });
 }
 
 function escapeMarkdownLinkText(value: string): string {

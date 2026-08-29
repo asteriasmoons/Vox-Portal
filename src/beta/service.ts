@@ -247,6 +247,9 @@ function betaAttachmentReferences(
       mime_type: a.mime_type,
       size_bytes: a.size_bytes,
       url: a.r2_key ? betaAttachmentPublicUrl(env, a) : null,
+      thumbnail_url: a.r2_key && (a.mime_type ?? "").toLowerCase().startsWith("image/")
+        ? `${betaAttachmentPublicUrl(env, a)}?variant=rounded`
+        : null,
     })),
   );
 }
