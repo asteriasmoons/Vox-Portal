@@ -271,6 +271,9 @@ fieldset.check-options legend {
 
 /* ── Buttons ─────────────────────────────────────────── */
 .primary, .ghost {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 100%;
   padding: 15px 18px;
   border-radius: 14px;
@@ -684,7 +687,9 @@ img.nav-glyph { content: ""; }
 .attachment-name { display: block; font-weight: 800; }
 .attachment-meta { display: block; margin-top: 3px; color: var(--subtext); font-size: 12px; font-weight: 700; }
 .empty-attachment { color: var(--subtext); }
-.resubmit-card { margin: 4px 0 18px; }
+.resubmit-card { display: grid; gap: 10px; margin: 4px 0 18px; }
+.resubmit-card .primary,
+.resubmit-card .ghost { margin: 0; }
 .resubmit-feedback { min-height: 18px; text-align: center; }
 @media (max-width: 420px) { .detail-grid { grid-template-columns: 1fr; } }
 
