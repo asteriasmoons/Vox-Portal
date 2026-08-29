@@ -1,4 +1,5 @@
-// Beta Feedback form: mirrors the Idea form's standalone page wiring.
+// Beta Feedback form: create mode by default, edit mode when opened with
+// ?edit=<id>. One form, two submission endpoints.
 
 import { requireEl, formatBytes, $ } from "./dom";
 import { INIT_DATA, haptic } from "./tg";
@@ -19,6 +20,15 @@ interface Entry {
   error?: string;
 }
 
+interface ExistingAttachment {
+  id: number;
+  kind: string;
+  file_name: string | null;
+  mime_type: string | null;
+  size_bytes: number | null;
+  removed?: boolean;
+}
+
 interface ConfigOption { id: string; label: string }
 interface ConfigResponse {
   ok: true;
@@ -32,17 +42,30 @@ interface BetaSubmitResponse {
   ok: true;
   public_id: string;
   id: number;
-  telegram: { status: "sent" | "failed" };
+  telegram: { status: "sent" | "updated" | "failed" };
+}
+
+interface BetaDetailResponse {
+  ok: boolean;
+  beta_feedback?: Record<string, unknown>;
+  attachments?: ExistingAttachment[];
+  error?: string;
 }
 
 const queue: Entry[] = [];
+const existingAttachments: ExistingAttachment[] = [];
 let nextId = 1;
+let editId: number | null = null;
+let editPublicId: string | null = null;
 
 export async function initBetaFeedbackPage(): Promise<void> {
   if (!INIT_DATA) showTopError("This form must be opened from inside Telegram.");
-  void loadBetaConfig();
+  editId = editIdFromUrl();
   wireFilePicker();
   wireSubmit();
+  await loadBetaConfig();
+  if (editId) await loadForEdit(editId);
+  renderQueue();
 }
 
 async function loadBetaConfig(): Promise<void> {
@@ -75,6 +98,50 @@ async function loadBetaConfig(): Promise<void> {
   }
 }
 
+async function loadForEdit(id: number): Promise<void> {
+  try {
+    const res = await fetch(`/api/mybeta-feedback/${id}`, { headers: { [H_INIT]: INIT_DATA } });
+    const data = (await res.json().catch(() => ({}))) as BetaDetailResponse;
+    if (!res.ok || !data.ok || !data.beta_feedback) throw new Error(data.error ?? "detail");
+    const row = data.beta_feedback;
+    editPublicId = String(row.public_id ?? `BETA-${String(row.public_number ?? id).padStart(4, "0")}`);
+
+    const title = document.querySelector<HTMLElement>(".page-title");
+    if (title) title.textContent = "Edit Beta Feedback";
+    const sub = document.querySelector<HTMLElement>(".sub");
+    if (sub) sub.textContent = "Update the existing submission without creating a new BETA ID.";
+    const back = document.querySelector<HTMLAnchorElement>(".back-btn");
+    if (back) {
+      back.href = "./history.html";
+      back.textContent = "Back";
+    }
+    requireEl("#beta-edit-public-id").textContent = editPublicId;
+    requireEl("#beta-edit-note").classList.remove("hidden");
+    requireEl<HTMLButtonElement>("#beta-submit-btn").textContent = "Submit Updated Version";
+
+    setValue("app", row.app);
+    setValue("app_version", row.app_version);
+    setValue("app_build", row.app_build);
+    setValue("testing", row.testing);
+    setValue("what_did_you_do", row.what_did_you_do);
+    setValue("what_happened", row.what_happened);
+    setValue("expected_behavior", row.expected_behavior);
+    setValue("overall_experience", row.overall_experience);
+    setValue("would_use_feature", row.would_use_feature);
+    setValue("changes", row.changes);
+    setValue("notes", row.notes);
+
+    const selectedTypes = new Set(parseFeedbackTypes(String(row.feedback_types ?? "")));
+    document.querySelectorAll<HTMLInputElement>('input[name="feedback_types"]').forEach((input) => {
+      input.checked = selectedTypes.has(input.value);
+    });
+
+    existingAttachments.splice(0, existingAttachments.length, ...(data.attachments ?? []));
+  } catch {
+    showTopError("Couldn't load this beta feedback for editing.");
+  }
+}
+
 function addOption(sel: HTMLSelectElement, value: string, label: string): void {
   const opt = document.createElement("option");
   opt.value = value;
@@ -90,11 +157,10 @@ function wireFilePicker(): void {
     target.value = "";
     for (const f of files) enqueue(f);
   });
-  renderQueue();
 }
 
 function enqueue(file: File): void {
-  if (queue.filter((u) => u.status !== "error").length >= MAX_FILES) {
+  if (activeAttachmentCount() >= MAX_FILES) {
     showTopError(`You can attach up to ${MAX_FILES} files.`);
     return;
   }
@@ -129,6 +195,28 @@ async function upload(entry: Entry): Promise<void> {
 function renderQueue(): void {
   const list = requireEl<HTMLUListElement>("#beta-file-list");
   list.innerHTML = "";
+
+  for (const a of existingAttachments.filter((att) => !att.removed)) {
+    const li = document.createElement("li");
+    const name = document.createElement("span");
+    name.className = "name";
+    name.textContent = a.file_name || labelize(a.kind);
+    const size = document.createElement("span");
+    size.className = "size";
+    size.textContent = a.size_bytes ? formatBytes(a.size_bytes) : "size unknown";
+    const stat = document.createElement("span");
+    stat.className = "prog";
+    stat.textContent = "saved";
+    const rm = document.createElement("button");
+    rm.type = "button";
+    rm.className = "rm";
+    rm.textContent = "×";
+    rm.setAttribute("aria-label", "Remove");
+    rm.addEventListener("click", () => { a.removed = true; renderQueue(); });
+    li.append(name, size, stat, rm);
+    list.appendChild(li);
+  }
+
   for (const u of queue) {
     const li = document.createElement("li");
     if (u.status === "error") li.classList.add("err");
@@ -185,35 +273,44 @@ function wireSubmit(): void {
       .filter((u) => u.status === "done" && u.key)
       .map((u) => ({ key: u.key!, name: u.name!, mime: u.mime!, size: u.size }));
 
-    btn.disabled = true; btn.textContent = "Sending...";
+    const payload = {
+      app: data.app,
+      app_version: data.app_version,
+      app_build: data.app_build,
+      testing: data.testing,
+      feedback_types: feedbackTypes,
+      what_did_you_do: data.what_did_you_do,
+      what_happened: data.what_happened,
+      expected_behavior: data.expected_behavior,
+      overall_experience: data.overall_experience,
+      would_use_feature: data.would_use_feature,
+      changes: data.changes,
+      notes: data.notes,
+      attachments,
+      submit_token: typeof crypto !== "undefined" && "randomUUID" in crypto
+        ? crypto.randomUUID() : String(Date.now()),
+      ...(editId ? {
+        keep_attachment_ids: existingAttachments
+          .filter((a) => !a.removed)
+          .map((a) => a.id),
+      } : {}),
+    };
+
+    btn.disabled = true;
+    btn.textContent = editId ? "Updating..." : "Sending...";
     try {
-      const res = await fetch("/api/submit-beta-feedback", {
-        method: "POST",
+      const res = await fetch(editId ? `/api/mybeta-feedback/${editId}` : "/api/submit-beta-feedback", {
+        method: editId ? "PATCH" : "POST",
         headers: { "content-type": "application/json", [H_INIT]: INIT_DATA },
-        body: JSON.stringify({
-          app: data.app,
-          app_version: data.app_version,
-          app_build: data.app_build,
-          testing: data.testing,
-          feedback_types: feedbackTypes,
-          what_did_you_do: data.what_did_you_do,
-          what_happened: data.what_happened,
-          expected_behavior: data.expected_behavior,
-          overall_experience: data.overall_experience,
-          would_use_feature: data.would_use_feature,
-          changes: data.changes,
-          notes: data.notes,
-          attachments,
-          submit_token: typeof crypto !== "undefined" && "randomUUID" in crypto
-            ? crypto.randomUUID() : String(Date.now()),
-        }),
+        body: JSON.stringify(payload),
       });
       const out = (await res.json().catch(() => ({}))) as BetaSubmitResponse & { error?: string };
       if (!res.ok || !out.ok) throw new Error(out.error ?? "submit");
       showBetaSuccess(out.public_id, out.telegram);
     } catch {
-      btn.disabled = false; btn.textContent = "Send feedback";
-      showTopError("Couldn't submit your beta feedback. Please try again.");
+      btn.disabled = false;
+      btn.textContent = editId ? "Submit Updated Version" : "Send feedback";
+      showTopError(editId ? "Couldn't update your beta feedback. Please try again." : "Couldn't submit your beta feedback. Please try again.");
     }
   });
 }
@@ -231,15 +328,24 @@ function showFieldErrors(form: HTMLFormElement, errs: [string, string][]): void 
   }
 }
 
-function showBetaSuccess(publicId: string, telegram: { status: "sent" | "failed" }): void {
+function showBetaSuccess(publicId: string, telegram: { status: "sent" | "updated" | "failed" }): void {
   requireEl("#beta-success-id").textContent = publicId;
   requireEl("#beta-feedback-form").classList.add("hidden");
   requireEl("#beta-success").classList.remove("hidden");
+  const title = document.querySelector<HTMLElement>("#beta-success .page-title");
+  if (title) title.textContent = editId ? "Beta feedback updated" : "Beta feedback sent";
+  const kicker = document.querySelector<HTMLElement>("#beta-success .success-kicker");
+  if (kicker) kicker.textContent = editId ? "FEEDBACK UPDATED" : "FEEDBACK RECEIVED";
+  const copy = document.querySelector<HTMLElement>("#beta-success .success-copy");
+  if (copy) copy.innerHTML = editId
+    ? `Your changes were saved to <b id="beta-success-id">${publicId}</b>.`
+    : `Your feedback was saved as <b id="beta-success-id">${publicId}</b>.`;
   const dest = $("#beta-success-destinations");
   if (dest) {
     dest.innerHTML = "";
-    dest.appendChild(destRow(telegram.status === "sent" ? "ok" : "warn",
-      telegram.status === "sent" ? "Sent to Telegram" : "Telegram delivery failed"));
+    const okText = editId ? "Telegram and GitHub mirrors updated" : "Sent to Telegram";
+    dest.appendChild(destRow(telegram.status === "failed" ? "warn" : "ok",
+      telegram.status === "failed" ? "Telegram delivery failed" : okText));
   }
   haptic("success");
 }
@@ -255,4 +361,32 @@ function destRow(kind: "ok" | "warn" | "muted", text: string): HTMLElement {
   label.textContent = text;
   li.append(mark, label);
   return li;
+}
+
+function editIdFromUrl(): number | null {
+  const raw = new URLSearchParams(window.location.search).get("edit");
+  const n = raw ? Number(raw) : NaN;
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+function setValue(name: string, value: unknown): void {
+  const el = document.querySelector<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(`[name="${name}"]`);
+  if (el) el.value = typeof value === "string" ? value : "";
+}
+
+function parseFeedbackTypes(value: string): string[] {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    if (Array.isArray(parsed)) return parsed.filter((v): v is string => typeof v === "string");
+  } catch { /* fall through */ }
+  return value.split(",").map((v) => v.trim()).filter(Boolean);
+}
+
+function activeAttachmentCount(): number {
+  return existingAttachments.filter((a) => !a.removed).length
+    + queue.filter((u) => u.status !== "error").length;
+}
+
+function labelize(value: string): string {
+  return value.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }

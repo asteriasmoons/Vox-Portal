@@ -32,6 +32,7 @@
   --safe-top:    max(env(safe-area-inset-top), 104px);
   --safe-bottom: max(env(safe-area-inset-bottom), 12px);
   --nav-height:  76px;
+  --app-viewport-height: 100dvh;
 
   /* Gradient tokens — reused for background, buttons, and active nav.
      Indigo purple pooling top-right, deep plum bottom-left, black
@@ -49,27 +50,53 @@
 html, body {
   margin: 0;
   padding: 0;
+  width: 100%;
+  max-width: 100%;
+  height: var(--app-viewport-height, 100dvh);
+  min-height: 0;
+  overflow: hidden;
+  overscroll-behavior: none;
   background: var(--grad-bg);
-  background-attachment: fixed;
   color: var(--text);
   font-family: var(--font-rounded);
   font-size: 15px;
   line-height: 1.4;
-  min-height: 100dvh;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  -webkit-text-size-adjust: 100%;
+  touch-action: pan-y;
+}
+
+body {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  touch-action: pan-y;
 }
 
 /* Reserved strip Telegram paints its chips into. Transparent so gradient shows through. */
 #tg-safe-top {
+  flex: 0 0 var(--safe-top);
   height: var(--safe-top);
   width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+  touch-action: pan-y;
 }
 
 main {
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
   max-width: 640px;
   margin: 0 auto;
   padding: 8px 16px calc(var(--nav-height) + var(--safe-bottom) + 24px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
 }
 
 /* ── Typography — rounded, black weight ───────────────── */
@@ -95,9 +122,10 @@ main {
   margin: 0 0 12px;
 }
 button, input, textarea, select { font-family: var(--font-rounded); }
+button, a, .filepick { touch-action: manipulation; }
 
 /* ── Page visibility ─────────────────────────────────── */
-.hidden { display: none; }
+.hidden { display: none !important; }
 @keyframes fade { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: none; } }
 main { animation: fade 180ms ease-out; }
 
@@ -131,7 +159,7 @@ input, textarea, select {
   border: 1.5px solid var(--border-strong);
   border-radius: 12px;
   padding: 12px 14px;
-  font-size: 15px;
+  font-size: 16px;
   font-weight: 600;
   outline: none;
   appearance: none;
@@ -524,8 +552,11 @@ fieldset.check-options legend {
 #nav {
   position: fixed !important;
   left: 0; right: 0; bottom: 0;
+  max-width: 100%;
   height: calc(var(--nav-height) + var(--safe-bottom));
   padding-bottom: var(--safe-bottom);
+  overflow: hidden;
+  touch-action: manipulation;
   background: linear-gradient(180deg, rgba(23,23,31,0.75), rgba(13,13,19,0.95));
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);

@@ -341,6 +341,8 @@ function renderIdeaDetail(idea: Record<string, unknown>, attachments: Attachment
   }
 
   const rb = document.getElementById("detail-resubmit") as HTMLButtonElement | null;
+  const eb = document.getElementById("detail-edit-beta") as HTMLAnchorElement | null;
+  if (eb) eb.classList.add("hidden");
   if (rb) {
     if (idea.can_resubmit !== true) {
       rb.style.display = "none";
@@ -398,6 +400,9 @@ function renderBetaFeedbackDetail(beta: Record<string, unknown>, attachments: At
   setText("#detail-steps", get("expected_behavior") || "Not provided");
   setText("#detail-notes", get("notes") || "None");
 
+  const existingWhere = document.getElementById("detail-where-belongs");
+  if (existingWhere) existingWhere.previousElementSibling?.remove();
+  if (existingWhere) existingWhere.remove();
   const existingChanges = document.getElementById("detail-beta-changes");
   if (existingChanges) existingChanges.remove();
   const changes = get("changes").trim();
@@ -428,6 +433,11 @@ function renderBetaFeedbackDetail(beta: Record<string, unknown>, attachments: At
   }
 
   const rb = document.getElementById("detail-resubmit") as HTMLButtonElement | null;
+  const eb = document.getElementById("detail-edit-beta") as HTMLAnchorElement | null;
+  if (eb) {
+    eb.classList.remove("hidden");
+    eb.href = `./create-beta-feedback.html?edit=${Number(beta.id)}`;
+  }
   if (rb) {
     if (beta.can_resubmit !== true) {
       rb.style.display = "none";
@@ -467,6 +477,8 @@ function renderDetail(bug: BugDetail, attachments: AttachmentDetail[]): void {
   if (bc) bc.previousElementSibling?.remove();
   if (bc) bc.remove();
   const rb = document.getElementById("detail-resubmit") as HTMLButtonElement | null;
+  const eb = document.getElementById("detail-edit-beta") as HTMLAnchorElement | null;
+  if (eb) eb.classList.add("hidden");
   if (rb) {
     rb.style.display = bug.can_resubmit === true ? "" : "none";
     rb.onclick = null;

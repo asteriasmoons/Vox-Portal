@@ -10,8 +10,10 @@ import { initIdeaPage } from "./idea";
 import { initBetaFeedbackPage } from "./beta";
 import { $ } from "./dom";
 import { showTopError, clearErrors } from "./ui";
+import { initTapToDismissTextFields } from "./webview";
 
 initTelegram();
+initTapToDismissTextFields();
 
 const page = document.body.dataset.page;
 

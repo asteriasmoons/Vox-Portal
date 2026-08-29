@@ -140,6 +140,17 @@ CREATE TABLE IF NOT EXISTS beta_feedback (
   discussion_thread_id     INTEGER,
   report_message_id        INTEGER,
 
+  github_repo              TEXT,
+  github_discussion_id     TEXT,
+  github_discussion_url    TEXT,
+  github_comment_id        TEXT,
+  github_comment_url       TEXT,
+  github_status            TEXT,
+  github_error             TEXT,
+  github_created_at        INTEGER,
+
+  last_edited_at           INTEGER,
+
   created_at               INTEGER NOT NULL DEFAULT (unixepoch()),
   updated_at               INTEGER NOT NULL DEFAULT (unixepoch())
 );
@@ -175,3 +186,15 @@ CREATE TABLE IF NOT EXISTS beta_feedback_status_history (
   created_at  INTEGER NOT NULL DEFAULT (unixepoch())
 );
 CREATE INDEX IF NOT EXISTS idx_beta_feedback_status_history_feedback ON beta_feedback_status_history(beta_feedback_id);
+
+CREATE TABLE IF NOT EXISTS beta_feedback_revisions (
+  id               INTEGER PRIMARY KEY AUTOINCREMENT,
+  beta_feedback_id INTEGER NOT NULL REFERENCES beta_feedback(id) ON DELETE CASCADE,
+  public_number    INTEGER NOT NULL,
+  revision_number  INTEGER NOT NULL,
+  previous_data    TEXT NOT NULL,
+  edited_by        INTEGER,
+  created_at       INTEGER NOT NULL DEFAULT (unixepoch()),
+  UNIQUE(beta_feedback_id, revision_number)
+);
+CREATE INDEX IF NOT EXISTS idx_beta_feedback_revisions_feedback ON beta_feedback_revisions(beta_feedback_id);

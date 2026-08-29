@@ -320,6 +320,17 @@ export async function editMessageReplyMarkup(
   return await tgCall(env, "editMessageReplyMarkup", { chat_id: chatId, message_id: messageId, reply_markup });
 }
 
+export async function deleteMessage(
+  env: Env,
+  chatId: number | string,
+  messageId: number,
+): Promise<true> {
+  return await tgCall<true>(env, "deleteMessage", {
+    chat_id: chatId,
+    message_id: messageId,
+  });
+}
+
 export async function answerCallbackQuery(
   env: Env,
   callbackQueryId: string,

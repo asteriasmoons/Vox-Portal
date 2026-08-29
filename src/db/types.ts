@@ -77,6 +77,16 @@ export interface IdeaRow {
   updated_at: number;
 }
 
+export interface BetaFeedbackRevisionRow {
+  id: number;
+  beta_feedback_id: number;
+  public_number: number;
+  revision_number: number;
+  previous_data: string;
+  edited_by: number | null;
+  created_at: number;
+}
+
 export interface IdeaAttachmentRow {
   id: number;
   idea_id: number;
@@ -137,6 +147,7 @@ export interface BetaFeedbackRow {
   github_status: string | null;
   github_error: string | null;
   github_created_at: number | null;
+  last_edited_at: number | null;
   created_at: number;
   updated_at: number;
 }

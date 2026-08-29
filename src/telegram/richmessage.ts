@@ -71,6 +71,20 @@ function kvTable(rows: [string, string][], caption?: string) {
   };
 }
 
+function solidHeaderKvTable(rows: [string, string][], caption?: string) {
+  return {
+    type: "table",
+    is_compact: true,
+    is_bordered: false,
+    is_striped: false,
+    ...(caption ? { caption } : {}),
+    cells: rows.map(([k, v]) => [
+      { text: k, is_header: true, align: "left" },
+      { text: v, is_header: true, align: "left" },
+    ]),
+  };
+}
+
 // ── Public: bug report Rich Message ───────────────────────
 // Builds a complete InputRichMessage body for the given bug, INCLUDING
 // the management button bar. State (Status/Severity/Category) is rendered
@@ -412,8 +426,9 @@ export function buildBetaFeedbackRichMessage(row: BetaFeedbackRow): { blocks: un
 
   blocks.push(heading(`BETA FEEDBACK — ${betaFeedbackPublicId(row)}`, 2));
   blocks.push(paragraph(row.testing));
+  blocks.push(divider());
 
-  blocks.push(kvTable([
+  blocks.push(solidHeaderKvTable([
     ["App", row.app],
     ["Version", row.app_version || "Not provided"],
     ["Build", row.app_build || "Not provided"],
@@ -429,6 +444,7 @@ export function buildBetaFeedbackRichMessage(row: BetaFeedbackRow): { blocks: un
     if (!v || !v.trim()) return;
     blocks.push(heading(h, 4));
     blocks.push(paragraph(v));
+    blocks.push(divider());
   };
   sec("What Did You Do?", row.what_did_you_do);
   sec("What Happened?", row.what_happened);
@@ -440,7 +456,11 @@ export function buildBetaFeedbackRichMessage(row: BetaFeedbackRow): { blocks: un
     ? `@${row.reporter_username}`
     : row.reporter_display_name || "anonymous";
   blocks.push(heading("Reporter", 4));
-  blocks.push(paragraph(`${reporter} · submitted ${formatBetaTs(row.created_at)}`));
+  blocks.push(paragraph(
+    `${reporter} · submitted ${formatBetaTs(row.created_at)}${
+      row.last_edited_at ? ` · edited ${formatBetaTs(row.last_edited_at)}` : ""
+    }`,
+  ));
 
   if (row.github_comment_url) {
     blocks.push(divider());

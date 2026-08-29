@@ -9,12 +9,15 @@ import {
   getBetaFeedback,
   insertBetaFeedback,
   insertBetaFeedbackAttachment,
+  insertBetaFeedbackRevision,
   listBetaFeedbackAttachments,
   nextBetaFeedbackNumber,
   saveBetaFeedbackGitHubMeta,
   setBetaFeedbackAttachmentPostedMessage,
   clearBetaFeedbackTelegramLinkage,
+  deleteBetaFeedbackAttachmentsByIds,
   setBetaFeedbackTelegramLinkage,
+  updateBetaFeedbackEditableFields,
   updateBetaFeedbackStatus as dbUpdateBetaFeedbackStatus,
 } from "../db/queries";
 import type { BetaFeedbackAttachmentRow, BetaFeedbackRow, NewBetaFeedbackInput } from "../db/types";
@@ -27,15 +30,16 @@ import {
   refreshBetaFeedbackRichReport,
   waitForBetaFeedbackDiscussionMirror,
 } from "../telegram/channel";
-import { sendMessage, TelegramError } from "../telegram/api";
+import { deleteMessage, sendMessage, TelegramError } from "../telegram/api";
 import {
+  type BetaFeedbackAttachmentReference,
   renderBetaFeedbackGitHubComment,
   renderBetaFeedbackReporterDm,
   renderBetaFeedbackSubmissionConfirmation,
 } from "./formatting";
 import { betaStatusMeta, resolveBetaFeedbackDiscussion, type BetaStatusId } from "./constants";
 import { discussionChatId } from "../config";
-import { addDiscussionComment } from "../github/discussions";
+import { addDiscussionComment, updateDiscussionComment } from "../github/discussions";
 import { esc } from "../util/html";
 import { log } from "../util/log";
 
@@ -59,6 +63,10 @@ export type IncomingBetaFeedbackAttachment =
       file_name: string;
       size_bytes?: number;
     };
+
+export interface BetaFeedbackEditInput extends NewBetaFeedbackInput {
+  keep_attachment_ids: number[];
+}
 
 export async function createBetaFeedback(
   env: Env,
@@ -115,7 +123,7 @@ export async function createBetaFeedback(
   }
 
   try {
-    await maybePostGitHubDiscussion(env, row, attachments);
+    await maybePostGitHubDiscussion(env, row);
   } catch (e) {
     log.warn("beta_feedback_github_unexpected_failed", { betaFeedbackId: row.id, err: String(e) });
   }
@@ -132,7 +140,6 @@ export async function createBetaFeedback(
 async function maybePostGitHubDiscussion(
   env: Env,
   row: BetaFeedbackRow,
-  attachments: IncomingBetaFeedbackAttachment[],
 ): Promise<void> {
   const target = resolveBetaFeedbackDiscussion(row.app);
   if (!target) {
@@ -150,10 +157,8 @@ async function maybePostGitHubDiscussion(
     return;
   }
 
-  const attNotes = attachments.map((a) =>
-    a.source === "r2" ? a.file_name : (a.file_name ?? `${a.kind} attachment`),
-  );
-  const res = await addDiscussionComment(env, target, renderBetaFeedbackGitHubComment(row, attNotes));
+  const refs = await betaAttachmentReferences(env, row);
+  const res = await addDiscussionComment(env, target, renderBetaFeedbackGitHubComment(row, refs));
   if (res.ok && res.comment_id && res.comment_url) {
     await saveBetaFeedbackGitHubMeta(env, row.id, {
       github_repo: `${target.owner}/${target.repo}`,
@@ -178,6 +183,33 @@ async function maybePostGitHubDiscussion(
   }
 }
 
+async function updateBetaFeedbackGitHubDiscussion(env: Env, row: BetaFeedbackRow): Promise<void> {
+  if (!row.github_comment_id) {
+    await maybePostGitHubDiscussion(env, row);
+    return;
+  }
+  const refs = await betaAttachmentReferences(env, row);
+  const res = await updateDiscussionComment(
+    env,
+    row.github_comment_id,
+    renderBetaFeedbackGitHubComment(row, refs),
+  );
+  if (res.ok) {
+    await saveBetaFeedbackGitHubMeta(env, row.id, {
+      github_comment_url: res.comment_url ?? row.github_comment_url,
+      github_status: "created",
+      github_error: null,
+    });
+  } else {
+    const reason = res.error ?? "unknown";
+    log.warn("beta_feedback_github_update_failed", { betaFeedbackId: row.id, reason });
+    await saveBetaFeedbackGitHubMeta(env, row.id, {
+      github_status: "failed",
+      github_error: reason.slice(0, 200),
+    });
+  }
+}
+
 export async function postBetaFeedbackGitHubPreviewToThread(
   env: Env,
   row: BetaFeedbackRow,
@@ -186,7 +218,7 @@ export async function postBetaFeedbackGitHubPreviewToThread(
   if (!url || !row.discussion_thread_id) return;
   const replyToMessageId = row.report_message_id ?? row.discussion_message_id ?? row.discussion_thread_id;
   try {
-    await sendMessage(env, discussionChatId(env), `GitHub Discussion\n${esc(url)}`, {
+    await sendMessage(env, discussionChatId(env), `<b>GitHub Discussion</b>\n${esc(url)}`, {
       parse_mode: "HTML",
       message_thread_id: row.discussion_thread_id,
       reply_parameters: { message_id: replyToMessageId },
@@ -201,6 +233,107 @@ export async function postBetaFeedbackGitHubPreviewToThread(
   } catch (e) {
     log.warn("beta_feedback_crossref_failed", { betaFeedbackId: row.id, err: String(e) });
   }
+}
+
+function betaAttachmentReferences(
+  env: Env,
+  row: BetaFeedbackRow,
+): Promise<BetaFeedbackAttachmentReference[]> {
+  return listBetaFeedbackAttachments(env, row.id).then((attachments) =>
+    attachments.map((a) => ({
+      id: a.id,
+      kind: a.kind,
+      file_name: a.file_name,
+      mime_type: a.mime_type,
+      size_bytes: a.size_bytes,
+      url: a.r2_key ? betaAttachmentPublicUrl(env, a) : null,
+    })),
+  );
+}
+
+function betaAttachmentPublicUrl(env: Env, attachment: BetaFeedbackAttachmentRow): string {
+  const base = env.PUBLIC_ORIGIN.replace(/\/+$/, "");
+  const name = encodeURIComponent(attachment.file_name || `${attachment.kind}-${attachment.id}`);
+  return `${base}/attachments/beta-feedback/${attachment.id}/${name}`;
+}
+
+export async function updateBetaFeedbackSubmission(
+  env: Env,
+  betaFeedbackId: number,
+  input: BetaFeedbackEditInput,
+  attachments: IncomingBetaFeedbackAttachment[],
+): Promise<BetaFeedbackRow> {
+  const current = await getBetaFeedback(env, betaFeedbackId);
+  if (!current) throw new Error("beta_feedback_not_found");
+  if (current.reporter_tg_id !== input.reporter_tg_id) throw new Error("forbidden");
+
+  const beforeAttachments = await listBetaFeedbackAttachments(env, current.id);
+  const validExistingIds = new Set(beforeAttachments.map((a) => a.id));
+  const keepIds = new Set(input.keep_attachment_ids.filter((id) => validExistingIds.has(id)));
+  const removed = beforeAttachments.filter((a) => !keepIds.has(a.id));
+  if (keepIds.size + attachments.length > 10) throw new Error("too_many_attachments");
+
+  await insertBetaFeedbackRevision(env, current, beforeAttachments, input.reporter_tg_id);
+
+  const editedAt = Math.floor(Date.now() / 1000);
+  await updateBetaFeedbackEditableFields(env, current.id, {
+    app: input.app,
+    app_version: input.app_version ?? null,
+    app_build: input.app_build ?? null,
+    testing: input.testing,
+    feedback_types: JSON.stringify(input.feedback_types),
+    what_did_you_do: input.what_did_you_do,
+    what_happened: input.what_happened,
+    expected_behavior: input.expected_behavior ?? null,
+    overall_experience: input.overall_experience,
+    would_use_feature: input.would_use_feature,
+    changes: input.changes ?? null,
+    notes: input.notes ?? null,
+  }, editedAt);
+
+  for (const attachment of removed) {
+    if (!attachment.posted_message_id) continue;
+    try {
+      await deleteMessage(env, discussionChatId(env), attachment.posted_message_id);
+    } catch (e) {
+      log.warn("beta_feedback_removed_attachment_delete_failed", {
+        betaFeedbackId,
+        attachmentId: attachment.id,
+        err: String(e),
+      });
+    }
+  }
+  await deleteBetaFeedbackAttachmentsByIds(env, current.id, removed.map((a) => a.id));
+
+  let fresh = (await getBetaFeedback(env, current.id)) ?? current;
+  for (const att of attachments) {
+    try {
+      await sleep(1100);
+      if (fresh.discussion_message_id) {
+        await persistAndPostAttachment(env, fresh, att);
+      } else {
+        await persistAttachment(env, fresh.id, att);
+      }
+    } catch (e) {
+      log.warn("beta_feedback_edit_attachment_failed", {
+        betaFeedbackId,
+        source: att.source,
+        kind: att.kind,
+        err: String(e),
+      });
+    }
+  }
+
+  fresh = (await getBetaFeedback(env, current.id)) ?? fresh;
+  await refreshBetaFeedbackChannelTicket(env, fresh);
+  await refreshBetaFeedbackRichReport(env, fresh);
+  try {
+    await updateBetaFeedbackGitHubDiscussion(env, fresh);
+  } catch (e) {
+    log.warn("beta_feedback_edit_github_sync_failed", { betaFeedbackId, err: String(e) });
+  }
+
+  return (await getBetaFeedback(env, current.id)) ?? fresh;
 }
 
 async function persistAndPostAttachment(
@@ -345,7 +478,7 @@ export async function resendBetaFeedbackToTelegram(
   row = (await getBetaFeedback(env, betaFeedbackId)) ?? row;
   if (!row.github_comment_id) {
     try {
-      await maybePostGitHubDiscussion(env, row, []);
+      await maybePostGitHubDiscussion(env, row);
     } catch (e) {
       log.warn("beta_feedback_resend_github_retry_failed", { betaFeedbackId, err: String(e) });
     }

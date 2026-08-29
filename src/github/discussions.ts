@@ -38,12 +38,43 @@ mutation AddDiscussionComment($discussionId: ID!, $body: String!) {
   }
 }`;
 
+const UPDATE_COMMENT = `
+mutation UpdateDiscussionComment($commentId: ID!, $body: String!) {
+  updateDiscussionComment(input: { commentId: $commentId, body: $body }) {
+    comment { id url }
+  }
+}`;
+
 export async function addDiscussionComment(
   env: Env,
   target: DiscussionTarget,
   body: string,
 ): Promise<DiscussionCommentResult> {
   if (!env.GITHUB_TOKEN) return { ok: false, error: "GITHUB_TOKEN not configured" };
+  return await discussionMutation(env, ADD_COMMENT, {
+    discussionId: target.discussion_node_id,
+    body,
+  }, "addDiscussionComment");
+}
+
+export async function updateDiscussionComment(
+  env: Env,
+  commentId: string,
+  body: string,
+): Promise<DiscussionCommentResult> {
+  if (!env.GITHUB_TOKEN) return { ok: false, error: "GITHUB_TOKEN not configured" };
+  return await discussionMutation(env, UPDATE_COMMENT, {
+    commentId,
+    body,
+  }, "updateDiscussionComment");
+}
+
+async function discussionMutation(
+  env: Env,
+  query: string,
+  variables: Record<string, string>,
+  resultKey: "addDiscussionComment" | "updateDiscussionComment",
+): Promise<DiscussionCommentResult> {
   try {
     const res = await fetch(GH_GRAPHQL, {
       method: "POST",
@@ -55,8 +86,8 @@ export async function addDiscussionComment(
         "content-type": "application/json",
       },
       body: JSON.stringify({
-        query: ADD_COMMENT,
-        variables: { discussionId: target.discussion_node_id, body },
+        query,
+        variables,
       }),
     });
     const text = await res.text();
@@ -67,7 +98,7 @@ export async function addDiscussionComment(
       log.error("github_discussion_add_failed", null, { status: res.status, body: msg });
       return { ok: false, error: msg, status: res.status };
     }
-    const comment = data.data?.addDiscussionComment?.comment;
+    const comment = data.data?.[resultKey]?.comment;
     if (!comment) {
       log.error("github_discussion_no_comment_returned", null, { data: JSON.stringify(data).slice(0, 300) });
       return { ok: false, error: "no comment returned" };

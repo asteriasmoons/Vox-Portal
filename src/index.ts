@@ -14,6 +14,7 @@ import type { Env } from "./config";
 import { dispatchUpdate } from "./telegram/webhook";
 import {
   handleConfig,
+  handleBetaFeedbackAttachment,
   handleMyBetaFeedbackDetail,
   handleMyBugDetail,
   handleMyBugs,
@@ -24,6 +25,7 @@ import {
   handleSubmit,
   handleSubmitBetaFeedback,
   handleSubmitIdea,
+  handleUpdateBetaFeedback,
   handleUpload,
 } from "./miniapp/api";
 import { registerCommands } from "./telegram/commands";
@@ -67,8 +69,13 @@ export default {
     if (ideaResubmitMatch && req.method === "POST") return handleResubmitIdea(env, req, Number(ideaResubmitMatch[1]));
     const betaFeedbackDetailMatch = url.pathname.match(/^\/api\/mybeta-feedback\/(\d+)$/);
     if (betaFeedbackDetailMatch && req.method === "GET") return handleMyBetaFeedbackDetail(env, req, Number(betaFeedbackDetailMatch[1]));
+    if (betaFeedbackDetailMatch && req.method === "PATCH") return handleUpdateBetaFeedback(env, req, Number(betaFeedbackDetailMatch[1]));
     const betaFeedbackResubmitMatch = url.pathname.match(/^\/api\/mybeta-feedback\/(\d+)\/resubmit$/);
     if (betaFeedbackResubmitMatch && req.method === "POST") return handleResubmitBetaFeedback(env, req, Number(betaFeedbackResubmitMatch[1]));
+    const betaFeedbackAttachmentMatch = url.pathname.match(/^\/attachments\/beta-feedback\/(\d+)(?:\/.*)?$/);
+    if (betaFeedbackAttachmentMatch && req.method === "GET") {
+      return handleBetaFeedbackAttachment(env, Number(betaFeedbackAttachmentMatch[1]));
+    }
 
     // ── One-shot admin: register slash-command list with Telegram ──
     if (url.pathname === "/admin/register-commands" && req.method === "POST") {

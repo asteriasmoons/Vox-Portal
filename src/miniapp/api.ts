@@ -6,7 +6,7 @@ import { type Env, isAdmin } from "../config";
 import { validateInitData } from "../telegram/initdata";
 import { createBug, resendBugToTelegram, postGitHubIssuePreviewToThread, type IncomingAttachment } from "../bugs/service";
 import { createIdea, resendIdeaToTelegram, type IncomingIdeaAttachment } from "../ideas/service";
-import { createBetaFeedback, resendBetaFeedbackToTelegram, type IncomingBetaFeedbackAttachment } from "../beta/service";
+import { createBetaFeedback, resendBetaFeedbackToTelegram, updateBetaFeedbackSubmission, type IncomingBetaFeedbackAttachment } from "../beta/service";
 import { listIdeasByReporter, getIdea, listIdeaAttachments } from "../db/queries";
 import { ideaPublicId } from "../ideas/formatting";
 import { betaFeedbackPublicId } from "../beta/formatting";
@@ -14,7 +14,7 @@ import { postChannelTicket, postReportToThread, postR2AttachmentToThread, postTe
 import { createIssueForBug } from "../github/service";
 import { APPS, CATEGORIES, SEVERITIES, FREQUENCIES, CATEGORY_IDS, SEVERITY_IDS } from "../bugs/constants";
 import { BETA_FEEDBACK_TYPE_IDS, BETA_FEEDBACK_TYPES, BETA_OVERALL_EXPERIENCE_IDS, BETA_OVERALL_EXPERIENCES, BETA_WOULD_USE_IDS, BETA_WOULD_USE_OPTIONS } from "../beta/constants";
-import { listBugsByReporter, getBug, listAttachments, setAttachmentPostedMessage, setBugTelegramLinkage, listBetaFeedbackByReporter, getBetaFeedback, listBetaFeedbackAttachments } from "../db/queries";
+import { listBugsByReporter, getBug, listAttachments, setAttachmentPostedMessage, setBugTelegramLinkage, listBetaFeedbackByReporter, getBetaFeedback, listBetaFeedbackAttachments, getBetaFeedbackAttachment } from "../db/queries";
 import { publicIdOf } from "../bugs/formatting";
 import { log } from "../util/log";
 
@@ -279,6 +279,71 @@ export async function handleResubmitBetaFeedback(env: Env, req: Request, id: num
   }
 }
 
+// PATCH /api/mybeta-feedback/:id — reporter edit of an existing Beta Feedback submission.
+export async function handleUpdateBetaFeedback(env: Env, req: Request, id: number): Promise<Response> {
+  const initData = req.headers.get("x-telegram-init-data") ?? "";
+  let user;
+  try { ({ user } = await validateInitData(env, initData)); }
+  catch { return json({ ok: false, error: "auth" }, { status: 401 }); }
+
+  let row = await getBetaFeedback(env, id);
+  if (!row || row.reporter_tg_id !== user.id) return json({ ok: false, error: "not_found" }, { status: 404 });
+
+  let payload: BetaFeedbackEditPayload;
+  try { payload = (await req.json()) as BetaFeedbackEditPayload; }
+  catch { return badRequest("invalid JSON"); }
+
+  const errs = validateBetaFeedbackPayload(payload);
+  if (errs.length) return badRequest(errs.join("; "));
+  if (payload.keep_attachment_ids && !Array.isArray(payload.keep_attachment_ids)) {
+    return badRequest("keep_attachment_ids invalid");
+  }
+  const keepAttachmentIds = (payload.keep_attachment_ids ?? [])
+    .map((id) => Number(id))
+    .filter((id) => Number.isInteger(id) && id > 0);
+
+  const attachments = await materializeBetaFeedbackAttachments(env, payload.attachments ?? []);
+
+  try {
+    const updated = await updateBetaFeedbackSubmission(
+      env,
+      row.id,
+      {
+        reporter_tg_id: user.id,
+        reporter_username: user.username ?? null,
+        reporter_display_name: [user.first_name, user.last_name].filter(Boolean).join(" ") || null,
+        app: payload.app.trim(),
+        app_version: nz(payload.app_version),
+        app_build: nz(payload.app_build),
+        testing: payload.testing.trim(),
+        feedback_types: payload.feedback_types as any,
+        what_did_you_do: payload.what_did_you_do.trim(),
+        what_happened: payload.what_happened.trim(),
+        expected_behavior: nz(payload.expected_behavior),
+        overall_experience: payload.overall_experience as any,
+        would_use_feature: payload.would_use_feature as any,
+        changes: nz(payload.changes),
+        notes: nz(payload.notes),
+        keep_attachment_ids: keepAttachmentIds,
+      },
+      attachments,
+    );
+    return json({
+      ok: true,
+      public_id: betaFeedbackPublicId(updated),
+      id: updated.id,
+      telegram: { status: "updated" as const },
+      github: betaFeedbackGithubResult(updated),
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    if (msg === "too_many_attachments") return badRequest("too many attachments");
+    if (msg === "forbidden") return json({ ok: false, error: "forbidden" }, { status: 403 });
+    log.error("miniapp_update_beta_feedback_failed", e, { betaFeedbackId: id, user_id: user.id });
+    return json({ ok: false, error: "server" }, { status: 500 });
+  }
+}
+
 // POST /api/submit-idea — creates a Feature Idea (Telegram + GitHub Discussion).
 export async function handleSubmitIdea(env: Env, req: Request): Promise<Response> {
   const initData = req.headers.get("x-telegram-init-data") ?? "";
@@ -371,23 +436,7 @@ export async function handleSubmitBetaFeedback(env: Env, req: Request): Promise<
   const errs = validateBetaFeedbackPayload(payload);
   if (errs.length) return badRequest(errs.join("; "));
 
-  const attachments: IncomingBetaFeedbackAttachment[] = [];
-  for (const a of payload.attachments ?? []) {
-    if (attachments.length >= MAX_ATTACHMENTS) break;
-    const obj = await env.ATTACHMENTS.get(a.key);
-    if (!obj) continue;
-    const bytes = await obj.arrayBuffer();
-    if (bytes.byteLength > MAX_ATTACHMENT_BYTES) continue;
-    attachments.push({
-      source: "r2",
-      kind: kindOf(a.mime),
-      r2_key: a.key,
-      bytes,
-      mime: a.mime || obj.httpMetadata?.contentType || "application/octet-stream",
-      file_name: a.name || "attachment",
-      size_bytes: bytes.byteLength,
-    });
-  }
+  const attachments = await materializeBetaFeedbackAttachments(env, payload.attachments ?? []);
 
   try {
     const row = await createBetaFeedback(
@@ -411,22 +460,12 @@ export async function handleSubmitBetaFeedback(env: Env, req: Request): Promise<
       },
       attachments,
     );
-    const github =
-      row.github_comment_id && row.github_comment_url
-        ? { status: "created" as const, comment_id: row.github_comment_id, comment_url: row.github_comment_url }
-        : row.github_status === "skipped_no_mapping"
-        ? { status: "skipped_no_mapping" as const, reason: row.github_error ?? null }
-        : row.github_status === "skipped_disabled"
-        ? { status: "skipped_disabled" as const, reason: row.github_error ?? null }
-        : row.github_status === "failed"
-        ? { status: "failed" as const, reason: row.github_error ?? null }
-        : { status: "not_attempted" as const };
     return json({
       ok: true,
       public_id: betaFeedbackPublicId(row),
       id: row.id,
       telegram: { status: "sent" as const },
-      github,
+      github: betaFeedbackGithubResult(row),
     });
   } catch (e) {
     log.error("miniapp_submit_beta_feedback_failed", e, { user_id: user.id });
@@ -451,6 +490,10 @@ interface BetaFeedbackSubmitPayload {
   submit_token?: string;
 }
 
+interface BetaFeedbackEditPayload extends BetaFeedbackSubmitPayload {
+  keep_attachment_ids?: number[];
+}
+
 function validateBetaFeedbackPayload(p: BetaFeedbackSubmitPayload): string[] {
   const errs: string[] = [];
   if (!p || typeof p !== "object") return ["invalid body"];
@@ -470,6 +513,62 @@ function validateBetaFeedbackPayload(p: BetaFeedbackSubmitPayload): string[] {
   }
   if ((p.attachments?.length ?? 0) > MAX_ATTACHMENTS) errs.push("too many attachments");
   return errs;
+}
+
+async function materializeBetaFeedbackAttachments(
+  env: Env,
+  payloadAttachments: { key: string; name: string; mime: string; size?: number }[],
+): Promise<IncomingBetaFeedbackAttachment[]> {
+  const attachments: IncomingBetaFeedbackAttachment[] = [];
+  for (const a of payloadAttachments) {
+    if (attachments.length >= MAX_ATTACHMENTS) break;
+    const obj = await env.ATTACHMENTS.get(a.key);
+    if (!obj) continue;
+    const bytes = await obj.arrayBuffer();
+    if (bytes.byteLength > MAX_ATTACHMENT_BYTES) continue;
+    attachments.push({
+      source: "r2",
+      kind: kindOf(a.mime),
+      r2_key: a.key,
+      bytes,
+      mime: a.mime || obj.httpMetadata?.contentType || "application/octet-stream",
+      file_name: a.name || "attachment",
+      size_bytes: bytes.byteLength,
+    });
+  }
+  return attachments;
+}
+
+function betaFeedbackGithubResult(row: {
+  github_comment_id?: string | null;
+  github_comment_url?: string | null;
+  github_status?: string | null;
+  github_error?: string | null;
+}) {
+  return row.github_comment_id && row.github_comment_url
+    ? { status: "created" as const, comment_id: row.github_comment_id, comment_url: row.github_comment_url }
+    : row.github_status === "skipped_no_mapping"
+    ? { status: "skipped_no_mapping" as const, reason: row.github_error ?? null }
+    : row.github_status === "skipped_disabled"
+    ? { status: "skipped_disabled" as const, reason: row.github_error ?? null }
+    : row.github_status === "failed"
+    ? { status: "failed" as const, reason: row.github_error ?? null }
+    : { status: "not_attempted" as const };
+}
+
+export async function handleBetaFeedbackAttachment(env: Env, attachmentId: number): Promise<Response> {
+  const row = await getBetaFeedbackAttachment(env, attachmentId);
+  if (!row?.r2_key) return new Response("not found", { status: 404 });
+  const obj = await env.ATTACHMENTS.get(row.r2_key);
+  if (!obj?.body) return new Response("not found", { status: 404 });
+  const name = row.file_name || `attachment-${attachmentId}`;
+  return new Response(obj.body, {
+    headers: {
+      "content-type": row.mime_type || obj.httpMetadata?.contentType || "application/octet-stream",
+      "cache-control": "public, max-age=31536000, immutable",
+      "content-disposition": `inline; filename="${sanitizeHeaderValue(name)}"; filename*=UTF-8''${encodeURIComponent(name)}`,
+    },
+  });
 }
 
 interface IdeaSubmitPayload {
@@ -754,4 +853,8 @@ function kindOf(mime: string | undefined): IncomingAttachment["kind"] {
 }
 function sanitizeName(n: string): string {
   return n.replace(/[^a-zA-Z0-9._-]+/g, "_").slice(0, 120) || "file";
+}
+
+function sanitizeHeaderValue(value: string): string {
+  return value.replace(/["\r\n\\]+/g, "_").slice(0, 180) || "attachment";
 }

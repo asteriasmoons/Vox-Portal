@@ -439,7 +439,7 @@ export async function setIdeaAttachmentPostedMessage(env: Env, id: number, messa
 }
 
 // ── Beta Feedback ──────────────────────────────────────
-import type { BetaFeedbackRow, BetaFeedbackAttachmentRow, NewBetaFeedbackInput } from "./types";
+import type { BetaFeedbackRow, BetaFeedbackAttachmentRow, BetaFeedbackRevisionRow, NewBetaFeedbackInput } from "./types";
 
 export async function nextBetaFeedbackNumber(env: Env): Promise<number> {
   const row = await env.DB.prepare(
@@ -572,6 +572,115 @@ export async function saveBetaFeedbackGitHubMeta(
   vals.push(Math.floor(Date.now() / 1000));
   vals.push(betaFeedbackId);
   await env.DB.prepare(`UPDATE beta_feedback SET ${cols.join(", ")} WHERE id = ?`).bind(...vals).run();
+}
+
+export interface BetaFeedbackEditablePatch {
+  app: string;
+  app_version: string | null;
+  app_build: string | null;
+  testing: string;
+  feedback_types: string;
+  what_did_you_do: string;
+  what_happened: string;
+  expected_behavior: string | null;
+  overall_experience: string;
+  would_use_feature: string;
+  changes: string | null;
+  notes: string | null;
+}
+
+export async function insertBetaFeedbackRevision(
+  env: Env,
+  row: BetaFeedbackRow,
+  attachments: BetaFeedbackAttachmentRow[],
+  editedBy: number,
+): Promise<BetaFeedbackRevisionRow> {
+  const latest = await env.DB.prepare(
+    `SELECT COALESCE(MAX(revision_number), 0) AS n
+     FROM beta_feedback_revisions
+     WHERE beta_feedback_id = ?`,
+  ).bind(row.id).first<{ n: number }>();
+  const revisionNumber = Number(latest?.n ?? 0) + 1;
+  const previousData = JSON.stringify({
+    beta_feedback: row,
+    attachments,
+  });
+  const inserted = await env.DB.prepare(
+    `INSERT INTO beta_feedback_revisions (
+       beta_feedback_id, public_number, revision_number, previous_data, edited_by, created_at
+     ) VALUES (?, ?, ?, ?, ?, ?)
+     RETURNING *`,
+  )
+    .bind(row.id, row.public_number, revisionNumber, previousData, editedBy, Math.floor(Date.now() / 1000))
+    .first<BetaFeedbackRevisionRow>();
+  if (!inserted) throw new Error("insertBetaFeedbackRevision: no row");
+  return inserted;
+}
+
+export async function updateBetaFeedbackEditableFields(
+  env: Env,
+  betaFeedbackId: number,
+  patch: BetaFeedbackEditablePatch,
+  editedAt: number,
+): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE beta_feedback SET
+       app = ?,
+       app_version = ?,
+       app_build = ?,
+       testing = ?,
+       feedback_types = ?,
+       what_did_you_do = ?,
+       what_happened = ?,
+       expected_behavior = ?,
+       overall_experience = ?,
+       would_use_feature = ?,
+       changes = ?,
+       notes = ?,
+       last_edited_at = ?,
+       updated_at = ?
+     WHERE id = ?`,
+  )
+    .bind(
+      patch.app,
+      patch.app_version,
+      patch.app_build,
+      patch.testing,
+      patch.feedback_types,
+      patch.what_did_you_do,
+      patch.what_happened,
+      patch.expected_behavior,
+      patch.overall_experience,
+      patch.would_use_feature,
+      patch.changes,
+      patch.notes,
+      editedAt,
+      editedAt,
+      betaFeedbackId,
+    )
+    .run();
+}
+
+export async function deleteBetaFeedbackAttachmentsByIds(
+  env: Env,
+  betaFeedbackId: number,
+  ids: number[],
+): Promise<void> {
+  const unique = [...new Set(ids.filter((id) => Number.isInteger(id) && id > 0))];
+  for (const id of unique) {
+    await env.DB.prepare(`DELETE FROM beta_feedback_attachments WHERE beta_feedback_id = ? AND id = ?`)
+      .bind(betaFeedbackId, id)
+      .run();
+  }
+}
+
+export async function getBetaFeedbackAttachment(
+  env: Env,
+  attachmentId: number,
+): Promise<BetaFeedbackAttachmentRow | null> {
+  return await env.DB.prepare(`SELECT * FROM beta_feedback_attachments WHERE id = ?`)
+    .bind(attachmentId)
+    .first<BetaFeedbackAttachmentRow>();
 }
 
 export async function updateBetaFeedbackStatus(
