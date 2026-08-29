@@ -194,7 +194,7 @@ function renderImageTable(images: BetaFeedbackAttachmentReference[]): string {
   for (let i = 0; i < images.length; i += 2) {
     const first = images[i];
     const second = images[i + 1];
-    rows.push(`<p align="center">${[first, second].filter(Boolean).map(renderImageCell).join("\n")}</p>`);
+    rows.push(`<div align="center">${[first, second].filter(Boolean).map(renderImageCell).join(" ")}</div>`);
   }
   return rows.join("\n\n");
 }
@@ -202,7 +202,7 @@ function renderImageTable(images: BetaFeedbackAttachmentReference[]): string {
 function renderImageCell(att: BetaFeedbackAttachmentReference): string {
   const name = escapeHtmlAttr(att.file_name || `${att.kind}-${att.id}`);
   const url = escapeHtmlAttr(att.url ?? "");
-  return `<a href="${url}"><img src="${url}" width="220" alt="${name}"></a>`;
+  return `<a href="${url}"><img src="${url}" width="200" alt="${name}"></a>`;
 }
 
 function escapeMarkdownLinkText(value: string): string {
