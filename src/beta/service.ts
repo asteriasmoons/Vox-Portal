@@ -13,6 +13,7 @@ import {
   listBetaFeedbackAttachments,
   nextBetaFeedbackNumber,
   saveBetaFeedbackGitHubMeta,
+  setBetaFeedbackGitHubPreviewMessageId,
   setBetaFeedbackAttachmentPostedMessage,
   clearBetaFeedbackTelegramLinkage,
   deleteBetaFeedbackAttachmentsByIds,
@@ -30,7 +31,7 @@ import {
   refreshBetaFeedbackRichReport,
   waitForBetaFeedbackDiscussionMirror,
 } from "../telegram/channel";
-import { deleteMessage, sendMessage, TelegramError } from "../telegram/api";
+import { deleteMessage, editMessageText, sendMessage, TelegramError } from "../telegram/api";
 import {
   type BetaFeedbackAttachmentReference,
   renderBetaFeedbackGitHubComment,
@@ -218,7 +219,7 @@ export async function postBetaFeedbackGitHubPreviewToThread(
   if (!url || !row.discussion_thread_id) return;
   const replyToMessageId = row.report_message_id ?? row.discussion_message_id ?? row.discussion_thread_id;
   try {
-    await sendMessage(env, discussionChatId(env), `<b>GitHub Discussion</b>\n${esc(url)}`, {
+    const message = await sendMessage(env, discussionChatId(env), `<b>GitHub Discussion</b>\n${esc(url)}`, {
       parse_mode: "HTML",
       message_thread_id: row.discussion_thread_id,
       reply_parameters: { message_id: replyToMessageId },
@@ -230,8 +231,33 @@ export async function postBetaFeedbackGitHubPreviewToThread(
         show_above_text: false,
       },
     });
+    await setBetaFeedbackGitHubPreviewMessageId(env, row.id, message.message_id);
   } catch (e) {
     log.warn("beta_feedback_crossref_failed", { betaFeedbackId: row.id, err: String(e) });
+  }
+}
+
+async function refreshBetaFeedbackGitHubPreview(env: Env, row: BetaFeedbackRow): Promise<void> {
+  if (!row.github_preview_message_id || !row.github_comment_url) return;
+  try {
+    await editMessageText(
+      env,
+      discussionChatId(env),
+      row.github_preview_message_id,
+      `<b>GitHub Discussion</b>\n${esc(row.github_comment_url)}`,
+      {
+        parse_mode: "HTML",
+        disable_web_page_preview: false,
+        link_preview_options: {
+          is_disabled: false,
+          url: row.github_comment_url,
+          prefer_large_media: true,
+          show_above_text: false,
+        },
+      },
+    );
+  } catch (e) {
+    log.warn("beta_feedback_crossref_refresh_failed", { betaFeedbackId: row.id, err: String(e) });
   }
 }
 
@@ -336,7 +362,10 @@ export async function updateBetaFeedbackSubmission(
     log.warn("beta_feedback_edit_github_sync_failed", { betaFeedbackId, err: String(e) });
   }
 
-  return (await getBetaFeedback(env, current.id)) ?? fresh;
+  fresh = (await getBetaFeedback(env, current.id)) ?? fresh;
+  await refreshBetaFeedbackGitHubPreview(env, fresh);
+
+  return fresh;
 }
 
 async function persistAndPostAttachment(

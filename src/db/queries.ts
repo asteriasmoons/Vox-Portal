@@ -527,6 +527,16 @@ export async function setBetaFeedbackReportMessageId(
     .run();
 }
 
+export async function setBetaFeedbackGitHubPreviewMessageId(
+  env: Env,
+  betaFeedbackId: number,
+  messageId: number,
+): Promise<void> {
+  await env.DB.prepare(`UPDATE beta_feedback SET github_preview_message_id=?, updated_at=? WHERE id=?`)
+    .bind(messageId, Math.floor(Date.now() / 1000), betaFeedbackId)
+    .run();
+}
+
 export async function clearBetaFeedbackTelegramLinkage(env: Env, betaFeedbackId: number): Promise<void> {
   await env.DB.prepare(
     `UPDATE beta_feedback SET
@@ -534,6 +544,7 @@ export async function clearBetaFeedbackTelegramLinkage(env: Env, betaFeedbackId:
        discussion_message_id = NULL,
        discussion_thread_id = NULL,
        report_message_id = NULL,
+       github_preview_message_id = NULL,
        updated_at = ?
      WHERE id = ?`,
   )

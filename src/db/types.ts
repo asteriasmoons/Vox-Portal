@@ -144,6 +144,7 @@ export interface BetaFeedbackRow {
   github_discussion_url: string | null;
   github_comment_id: string | null;
   github_comment_url: string | null;
+  github_preview_message_id: number | null;
   github_status: string | null;
   github_error: string | null;
   github_created_at: number | null;
