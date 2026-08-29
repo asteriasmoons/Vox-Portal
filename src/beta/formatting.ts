@@ -178,7 +178,7 @@ function renderGitHubReferences(attachments: BetaFeedbackAttachmentReference[]):
   const nonImages = attachments.filter((a) => !a.url || !(a.mime_type ?? "").toLowerCase().startsWith("image/"));
   const chunks: string[] = [];
   if (images.length) {
-    chunks.push(renderImageTable(images));
+    chunks.push(renderImageRows(images));
   }
   if (nonImages.length) {
     chunks.push(nonImages.map((a) => {
@@ -189,12 +189,16 @@ function renderGitHubReferences(attachments: BetaFeedbackAttachmentReference[]):
   return chunks.join("\n\n");
 }
 
-function renderImageTable(images: BetaFeedbackAttachmentReference[]): string {
+function renderImageRows(images: BetaFeedbackAttachmentReference[]): string {
   const rows: string[] = [];
   for (let i = 0; i < images.length; i += 2) {
     const first = images[i];
     const second = images[i + 1];
-    rows.push(`<div align="center">${[first, second].filter(Boolean).map(renderImageCell).join(" ")}</div>`);
+    if (second) {
+      rows.push(`<p align="center">${renderImageCell(first)}&nbsp;&nbsp;${renderImageCell(second)}</p>`);
+    } else {
+      rows.push(`<p align="center">${renderImageCell(first)}</p>`);
+    }
   }
   return rows.join("\n\n");
 }
@@ -202,7 +206,7 @@ function renderImageTable(images: BetaFeedbackAttachmentReference[]): string {
 function renderImageCell(att: BetaFeedbackAttachmentReference): string {
   const name = escapeHtmlAttr(att.file_name || `${att.kind}-${att.id}`);
   const url = escapeHtmlAttr(att.url ?? "");
-  return `<a href="${url}"><img src="${url}" width="200" alt="${name}"></a>`;
+  return `<a href="${url}"><img src="${url}" width="150" alt="${name}"></a>`;
 }
 
 function escapeMarkdownLinkText(value: string): string {
