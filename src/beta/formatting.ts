@@ -81,17 +81,15 @@ export function renderBetaFeedbackGitHubComment(
   parts.push(`## Beta Feedback - ${betaFeedbackPublicId(row)}`);
   parts.push(row.testing.trim());
   parts.push("---");
-  parts.push([
-    "| Detail | Value |",
-    "| --- | --- |",
-    tableRow("App", row.app),
-    tableRow("Version", row.app_version || "Not provided"),
-    tableRow("Build", row.app_build || "Not provided"),
-    tableRow("Status", st.label),
-    tableRow("Feedback Type", types.length ? types.join(", ") : "Not provided"),
-    tableRow("Overall Experience", betaOverallExperienceMeta(row.overall_experience).label),
-    tableRow("Would Use This Feature", betaWouldUseMeta(row.would_use_feature).label),
-  ].join("\n"));
+  parts.push(renderMetadataTable([
+    ["App", row.app],
+    ["Version", row.app_version || "Not provided"],
+    ["Build", row.app_build || "Not provided"],
+    ["Status", st.label],
+    ["Feedback Type", types.length ? types.join(", ") : "Not provided"],
+    ["Overall Experience", betaOverallExperienceMeta(row.overall_experience).label],
+    ["Would Use This Feature", betaWouldUseMeta(row.would_use_feature).label],
+  ]));
 
   const sec = (h: string, v: string | null | undefined) => {
     const t = (v ?? "").trim();
@@ -157,15 +155,22 @@ function parseFeedbackTypes(value: string): string[] {
   return value.split(",").map((v) => v.trim()).filter(Boolean);
 }
 
-function tableRow(label: string, value: string): string {
-  return `| ${markdownTableCell(label)} | ${markdownTableCell(value)} |`;
+function renderMetadataTable(rows: [string, string][]): string {
+  return [
+    '<table width="100%">',
+    "  <thead>",
+    '    <tr><th width="35%" align="left">Detail</th><th width="65%" align="left">Value</th></tr>',
+    "  </thead>",
+    "  <tbody>",
+    ...rows.map(([label, value]) =>
+      `    <tr><td width="35%">${htmlTableCell(label)}</td><td width="65%">${htmlTableCell(value)}</td></tr>`),
+    "  </tbody>",
+    "</table>",
+  ].join("\n");
 }
 
-function markdownTableCell(value: string): string {
-  return value
-    .replace(/\r?\n/g, "<br>")
-    .replace(/\|/g, "\\|")
-    .trim();
+function htmlTableCell(value: string): string {
+  return escapeHtmlText(value.trim()).replace(/\r?\n/g, "<br>");
 }
 
 function renderGitHubReferences(attachments: BetaFeedbackAttachmentReference[]): string {
@@ -185,17 +190,13 @@ function renderGitHubReferences(attachments: BetaFeedbackAttachmentReference[]):
 }
 
 function renderImageTable(images: BetaFeedbackAttachmentReference[]): string {
-  const rows: string[] = ["<table>"];
+  const rows: string[] = [];
   for (let i = 0; i < images.length; i += 2) {
     const first = images[i];
     const second = images[i + 1];
-    rows.push("  <tr>");
-    rows.push(`    <td>${renderImageCell(first)}</td>`);
-    rows.push(`    <td>${second ? renderImageCell(second) : ""}</td>`);
-    rows.push("  </tr>");
+    rows.push(`<p align="center">${[first, second].filter(Boolean).map(renderImageCell).join("\n")}</p>`);
   }
-  rows.push("</table>");
-  return rows.join("\n");
+  return rows.join("\n\n");
 }
 
 function renderImageCell(att: BetaFeedbackAttachmentReference): string {
@@ -209,9 +210,12 @@ function escapeMarkdownLinkText(value: string): string {
 }
 
 function escapeHtmlAttr(value: string): string {
+  return escapeHtmlText(value).replace(/"/g, "&quot;");
+}
+
+function escapeHtmlText(value: string): string {
   return value
     .replace(/&/g, "&amp;")
-    .replace(/"/g, "&quot;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 }
