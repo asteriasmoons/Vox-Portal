@@ -38,6 +38,16 @@ CREATE TABLE IF NOT EXISTS beta_feedback (
   discussion_thread_id     INTEGER,
   report_message_id        INTEGER,
 
+  -- GitHub Discussion linkage.
+  github_repo              TEXT,
+  github_discussion_id     TEXT,
+  github_discussion_url    TEXT,
+  github_comment_id        TEXT,
+  github_comment_url       TEXT,
+  github_status            TEXT,   -- 'created' | 'failed' | 'skipped_no_mapping' | 'skipped_disabled'
+  github_error             TEXT,
+  github_created_at        INTEGER,
+
   created_at               INTEGER NOT NULL DEFAULT (unixepoch()),
   updated_at               INTEGER NOT NULL DEFAULT (unixepoch())
 );

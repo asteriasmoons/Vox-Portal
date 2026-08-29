@@ -1,4 +1,50 @@
 // Beta Feedback enums. Stored values are ids; labels are rendered at the edges.
+//
+// Beta Feedback mirrors the Feature Ideas GitHub Discussion flow: each app can
+// point at a persistent GitHub Discussion, and each BETA submission posts a
+// comment into that discussion after the Telegram flow succeeds.
+
+export const BETA_FEEDBACK_REPO_OWNER = "asteriasmoons";
+export const BETA_FEEDBACK_REPO_NAME = "Vox-Apps-Docs";
+
+export interface BetaFeedbackDiscussion {
+  owner: string;
+  repo: string;
+  discussion_number: number;
+  discussion_node_id: string;
+  discussion_url: string;
+}
+
+export const BETA_FEEDBACK_DISCUSSIONS: Readonly<
+  Record<string, BetaFeedbackDiscussion>
+> = {
+  VoxTerm: betaDiscussion(18, "D_kwDOR_ikos4Ao2VX"),
+  Lurelia: betaDiscussion(14, "D_kwDOR_ikos4Ao0g7"),
+  Lunixia: betaDiscussion(15, "D_kwDOR_ikos4Ao153"),
+  Sterium: betaDiscussion(17, "D_kwDOR_ikos4Ao2Ng"),
+  Dotti: betaDiscussion(19, "D_kwDOR_ikos4Ao2Vl"),
+  Loomey: betaDiscussion(16, "D_kwDOR_ikos4Ao19s"),
+};
+
+function betaDiscussion(number: number, nodeId: string): BetaFeedbackDiscussion {
+  return {
+    owner: BETA_FEEDBACK_REPO_OWNER,
+    repo: BETA_FEEDBACK_REPO_NAME,
+    discussion_number: number,
+    discussion_node_id: nodeId,
+    discussion_url: number
+      ? `https://github.com/${BETA_FEEDBACK_REPO_OWNER}/${BETA_FEEDBACK_REPO_NAME}/discussions/${number}`
+      : `https://github.com/${BETA_FEEDBACK_REPO_OWNER}/${BETA_FEEDBACK_REPO_NAME}/discussions`,
+  };
+}
+
+export function resolveBetaFeedbackDiscussion(appName: string | null | undefined): BetaFeedbackDiscussion | null {
+  if (!appName) return null;
+  const entry = BETA_FEEDBACK_DISCUSSIONS[appName];
+  if (!entry) return null;
+  if (entry.discussion_node_id === "REPLACE_ME" || !entry.discussion_number) return null;
+  return entry;
+}
 
 export const BETA_FEEDBACK_TYPES = [
   { id: "worked_well", label: "Worked Well" },

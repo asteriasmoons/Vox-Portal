@@ -60,6 +60,38 @@ export function renderBetaFeedbackChannelTicket(row: BetaFeedbackRow): string {
   return lines.join("\n");
 }
 
+export function renderBetaFeedbackGitHubComment(row: BetaFeedbackRow, attachmentNotes: string[] = []): string {
+  const parts: string[] = [];
+  const types = betaFeedbackTypeLabels(row);
+  parts.push(`## Beta Feedback: ${row.testing}`);
+  parts.push(`**App:** ${row.app}`);
+  if (row.app_version) parts.push(`**Version:** ${row.app_version}`);
+  if (row.app_build) parts.push(`**Build:** ${row.app_build}`);
+  if (types.length) parts.push(`**Feedback Type:** ${types.join(", ")}`);
+  parts.push(`**Overall Experience:** ${betaOverallExperienceMeta(row.overall_experience).label}`);
+  parts.push(`**Would Use This Feature:** ${betaWouldUseMeta(row.would_use_feature).label}`);
+
+  const sec = (h: string, v: string | null | undefined) => {
+    const t = (v ?? "").trim();
+    if (!t) return;
+    parts.push(`### ${h}\n\n${t}`);
+  };
+  sec("What Were You Testing?", row.testing);
+  sec("What Did You Do?", row.what_did_you_do);
+  sec("What Happened?", row.what_happened);
+  sec("What Did You Expect?", row.expected_behavior);
+  sec("Anything You'd Change?", row.changes);
+  sec("Additional Notes", row.notes);
+
+  if (attachmentNotes.length) {
+    parts.push(`### Reference\n\n${attachmentNotes.map((a) => `- ${a}`).join("\n")}`);
+  }
+
+  parts.push(`---`);
+  parts.push(`_Submitted through the Voxiverse Telegram Mini App — ${betaFeedbackPublicId(row)}_`);
+  return parts.join("\n\n");
+}
+
 export function renderBetaFeedbackReporterDm(row: BetaFeedbackRow, fromStatus: string | null): string {
   const st = betaStatusMeta(row.status);
   const lines: string[] = [];

@@ -11,6 +11,7 @@ import {
   insertBetaFeedbackAttachment,
   listBetaFeedbackAttachments,
   nextBetaFeedbackNumber,
+  saveBetaFeedbackGitHubMeta,
   setBetaFeedbackAttachmentPostedMessage,
   clearBetaFeedbackTelegramLinkage,
   setBetaFeedbackTelegramLinkage,
@@ -28,11 +29,13 @@ import {
 } from "../telegram/channel";
 import { sendMessage, TelegramError } from "../telegram/api";
 import {
+  renderBetaFeedbackGitHubComment,
   renderBetaFeedbackReporterDm,
   renderBetaFeedbackSubmissionConfirmation,
 } from "./formatting";
-import { betaStatusMeta, type BetaStatusId } from "./constants";
+import { betaStatusMeta, resolveBetaFeedbackDiscussion, type BetaStatusId } from "./constants";
 import { discussionChatId } from "../config";
+import { addDiscussionComment } from "../github/discussions";
 import { esc } from "../util/html";
 import { log } from "../util/log";
 
@@ -112,12 +115,92 @@ export async function createBetaFeedback(
   }
 
   try {
+    await maybePostGitHubDiscussion(env, row, attachments);
+  } catch (e) {
+    log.warn("beta_feedback_github_unexpected_failed", { betaFeedbackId: row.id, err: String(e) });
+  }
+
+  try {
     await sendMessage(env, input.reporter_tg_id, renderBetaFeedbackSubmissionConfirmation(row), { parse_mode: "HTML" });
   } catch (e) {
     log.warn("beta_feedback_confirmation_failed", { betaFeedbackId: row.id, err: String(e) });
   }
 
   return (await getBetaFeedback(env, row.id)) ?? row;
+}
+
+async function maybePostGitHubDiscussion(
+  env: Env,
+  row: BetaFeedbackRow,
+  attachments: IncomingBetaFeedbackAttachment[],
+): Promise<void> {
+  const target = resolveBetaFeedbackDiscussion(row.app);
+  if (!target) {
+    const reason = `No Beta Feedback discussion configured for "${row.app}"`;
+    log.info("beta_feedback_github_no_mapping", { betaFeedbackId: row.id, app: row.app });
+    await saveBetaFeedbackGitHubMeta(env, row.id, { github_status: "skipped_no_mapping", github_error: reason });
+    return;
+  }
+  if (!env.GITHUB_TOKEN) {
+    log.warn("beta_feedback_github_disabled", { betaFeedbackId: row.id });
+    await saveBetaFeedbackGitHubMeta(env, row.id, {
+      github_status: "skipped_disabled",
+      github_error: "GITHUB_TOKEN not configured",
+    });
+    return;
+  }
+
+  const attNotes = attachments.map((a) =>
+    a.source === "r2" ? a.file_name : (a.file_name ?? `${a.kind} attachment`),
+  );
+  const res = await addDiscussionComment(env, target, renderBetaFeedbackGitHubComment(row, attNotes));
+  if (res.ok && res.comment_id && res.comment_url) {
+    await saveBetaFeedbackGitHubMeta(env, row.id, {
+      github_repo: `${target.owner}/${target.repo}`,
+      github_discussion_id: target.discussion_node_id,
+      github_discussion_url: target.discussion_url,
+      github_comment_id: res.comment_id,
+      github_comment_url: res.comment_url,
+      github_status: "created",
+      github_error: null,
+      github_created_at: Math.floor(Date.now() / 1000),
+    });
+    const fresh = await getBetaFeedback(env, row.id);
+    if (fresh) await refreshBetaFeedbackRichReport(env, fresh);
+    await postBetaFeedbackGitHubPreviewToThread(env, fresh ?? row, res.comment_url);
+  } else {
+    const reason = res.error ?? "unknown";
+    log.warn("beta_feedback_github_failed", { betaFeedbackId: row.id, reason });
+    await saveBetaFeedbackGitHubMeta(env, row.id, {
+      github_status: "failed",
+      github_error: reason.slice(0, 200),
+    });
+  }
+}
+
+export async function postBetaFeedbackGitHubPreviewToThread(
+  env: Env,
+  row: BetaFeedbackRow,
+  url = row.github_comment_url,
+): Promise<void> {
+  if (!url || !row.discussion_thread_id) return;
+  const replyToMessageId = row.report_message_id ?? row.discussion_message_id ?? row.discussion_thread_id;
+  try {
+    await sendMessage(env, discussionChatId(env), `GitHub Discussion\n${esc(url)}`, {
+      parse_mode: "HTML",
+      message_thread_id: row.discussion_thread_id,
+      reply_parameters: { message_id: replyToMessageId },
+      disable_web_page_preview: false,
+      link_preview_options: {
+        is_disabled: false,
+        url,
+        prefer_large_media: true,
+        show_above_text: false,
+      },
+    });
+  } catch (e) {
+    log.warn("beta_feedback_crossref_failed", { betaFeedbackId: row.id, err: String(e) });
+  }
 }
 
 async function persistAndPostAttachment(
@@ -227,6 +310,11 @@ export async function resendBetaFeedbackToTelegram(
     row = (await getBetaFeedback(env, betaFeedbackId)) ?? row;
     return { row, telegram: "failed" };
   }
+  row = { ...row, report_message_id: reportMessage.message_id };
+
+  if (row.github_comment_url) {
+    await postBetaFeedbackGitHubPreviewToThread(env, row);
+  }
 
   const stored = await listBetaFeedbackAttachments(env, row.id);
   for (const a of stored) {
@@ -251,6 +339,15 @@ export async function resendBetaFeedbackToTelegram(
       if (posted) await setBetaFeedbackAttachmentPostedMessage(env, a.id, posted);
     } catch (e) {
       log.warn("beta_feedback_resend_attachment_failed", { betaFeedbackId, attachmentId: a.id, err: String(e) });
+    }
+  }
+
+  row = (await getBetaFeedback(env, betaFeedbackId)) ?? row;
+  if (!row.github_comment_id) {
+    try {
+      await maybePostGitHubDiscussion(env, row, []);
+    } catch (e) {
+      log.warn("beta_feedback_resend_github_retry_failed", { betaFeedbackId, err: String(e) });
     }
   }
 

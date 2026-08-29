@@ -544,6 +544,36 @@ export async function clearBetaFeedbackTelegramLinkage(env: Env, betaFeedbackId:
     .run();
 }
 
+export interface BetaFeedbackGitHubPatch {
+  github_repo?: string | null;
+  github_discussion_id?: string | null;
+  github_discussion_url?: string | null;
+  github_comment_id?: string | null;
+  github_comment_url?: string | null;
+  github_status?: string | null;
+  github_error?: string | null;
+  github_created_at?: number | null;
+}
+
+export async function saveBetaFeedbackGitHubMeta(
+  env: Env,
+  betaFeedbackId: number,
+  patch: BetaFeedbackGitHubPatch,
+): Promise<void> {
+  const cols: string[] = [];
+  const vals: (string | number | null)[] = [];
+  for (const [k, v] of Object.entries(patch)) {
+    if (v === undefined) continue;
+    cols.push(`${k} = ?`);
+    vals.push(v as string | number | null);
+  }
+  if (!cols.length) return;
+  cols.push(`updated_at = ?`);
+  vals.push(Math.floor(Date.now() / 1000));
+  vals.push(betaFeedbackId);
+  await env.DB.prepare(`UPDATE beta_feedback SET ${cols.join(", ")} WHERE id = ?`).bind(...vals).run();
+}
+
 export async function updateBetaFeedbackStatus(
   env: Env,
   betaFeedbackId: number,

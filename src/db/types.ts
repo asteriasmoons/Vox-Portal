@@ -129,6 +129,14 @@ export interface BetaFeedbackRow {
   discussion_message_id: number | null;
   discussion_thread_id: number | null;
   report_message_id: number | null;
+  github_repo: string | null;
+  github_discussion_id: string | null;
+  github_discussion_url: string | null;
+  github_comment_id: string | null;
+  github_comment_url: string | null;
+  github_status: string | null;
+  github_error: string | null;
+  github_created_at: number | null;
   created_at: number;
   updated_at: number;
 }

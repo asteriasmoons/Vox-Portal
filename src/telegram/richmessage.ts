@@ -442,6 +442,11 @@ export function buildBetaFeedbackRichMessage(row: BetaFeedbackRow): { blocks: un
   blocks.push(heading("Reporter", 4));
   blocks.push(paragraph(`${reporter} · submitted ${formatBetaTs(row.created_at)}`));
 
+  if (row.github_comment_url) {
+    blocks.push(divider());
+    blocks.push(paragraph(`GitHub Discussion comment: ${row.github_comment_url}`));
+  }
+
   blocks.push(divider());
   for (const buttonRow of betaFeedbackManagementButtonBlocks(row)) blocks.push(buttonRow);
   return { blocks };
@@ -449,11 +454,16 @@ export function buildBetaFeedbackRichMessage(row: BetaFeedbackRow): { blocks: un
 
 export function betaFeedbackManagementButtonBlocks(row: BetaFeedbackRow): unknown[] {
   const id = row.id;
-  return [
-    buttonsRow([
-      { text: "Status", style: "primary", callback_data: `beta:menu:${id}:status` },
-    ]),
-  ];
+  const rows: unknown[] = [];
+  if (row.github_comment_url) {
+    rows.push(buttonsRow([
+      { text: "View on GitHub", style: "link", url: row.github_comment_url },
+    ]));
+  }
+  rows.push(buttonsRow([
+    { text: "Status", style: "primary", callback_data: `beta:menu:${id}:status` },
+  ]));
+  return rows;
 }
 
 export function buildBetaFeedbackStatusPickerRichMessage(row: BetaFeedbackRow): { blocks: unknown[] } {

@@ -270,6 +270,8 @@ export async function handleResubmitBetaFeedback(env: Env, req: Request, id: num
       public_id: betaFeedbackPublicId(fresh),
       telegram,
       report_posted: true,
+      github_created: !!fresh.github_comment_id,
+      github_url: fresh.github_comment_url,
     });
   } catch (e) {
     log.error("resubmit_beta_feedback_force_repost_failed", e, { betaFeedbackId: id });
@@ -354,7 +356,7 @@ export async function handleSubmitIdea(env: Env, req: Request): Promise<Response
   }
 }
 
-// POST /api/submit-beta-feedback — creates Beta Feedback (Telegram only).
+// POST /api/submit-beta-feedback — creates Beta Feedback (Telegram + GitHub Discussion).
 export async function handleSubmitBetaFeedback(env: Env, req: Request): Promise<Response> {
   const initData = req.headers.get("x-telegram-init-data") ?? "";
   let user;
@@ -409,11 +411,22 @@ export async function handleSubmitBetaFeedback(env: Env, req: Request): Promise<
       },
       attachments,
     );
+    const github =
+      row.github_comment_id && row.github_comment_url
+        ? { status: "created" as const, comment_id: row.github_comment_id, comment_url: row.github_comment_url }
+        : row.github_status === "skipped_no_mapping"
+        ? { status: "skipped_no_mapping" as const, reason: row.github_error ?? null }
+        : row.github_status === "skipped_disabled"
+        ? { status: "skipped_disabled" as const, reason: row.github_error ?? null }
+        : row.github_status === "failed"
+        ? { status: "failed" as const, reason: row.github_error ?? null }
+        : { status: "not_attempted" as const };
     return json({
       ok: true,
       public_id: betaFeedbackPublicId(row),
       id: row.id,
       telegram: { status: "sent" as const },
+      github,
     });
   } catch (e) {
     log.error("miniapp_submit_beta_feedback_failed", e, { user_id: user.id });
@@ -544,8 +557,8 @@ export async function handleMyBugs(env: Env, req: Request): Promise<Response> {
         telegram_posted: !!r.channel_message_id,
         report_posted: !!r.report_message_id,
         can_resubmit: canResubmit,
-        github_created: false,
-        github_url: null,
+        github_created: !!r.github_comment_id,
+        github_url: r.github_comment_url,
       })),
     ].sort((a, b) => b.created_at - a.created_at),
     // Legacy shape kept for backward compat with any older cached JS.

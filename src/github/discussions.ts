@@ -1,16 +1,16 @@
-// GitHub Discussions GraphQL client — used by Feature Ideas ONLY.
+// GitHub Discussions GraphQL client — used by workflows that post comments
+// into pre-existing app discussions.
 //
-// Bugs go through src/github/service.ts (REST /issues/*). Ideas post as
-// COMMENTS on the pre-existing "Ideas for <App>" discussion via the
-// GraphQL `addDiscussionComment` mutation. We never create a new
-// discussion here; only add replies to the mapped one.
+// Bugs go through src/github/service.ts (REST /issues/*). Ideas and Beta
+// Feedback post as COMMENTS on pre-existing app discussions via the GraphQL
+// `addDiscussionComment` mutation. We never create a new discussion here;
+// only add replies to the mapped one.
 //
 // Auth: reuses env.GITHUB_TOKEN (same secret bugs use). The token needs
 // the `discussion:write` scope on the target repo — classic PATs use
 // `public_repo` / `repo`; fine-grained tokens use Discussions: Read & Write.
 
 import type { Env } from "../config";
-import type { IdeaDiscussion } from "../ideas/constants";
 import { log } from "../util/log";
 
 const GH_GRAPHQL = "https://api.github.com/graphql";
@@ -23,6 +23,14 @@ export interface DiscussionCommentResult {
   status?: number;
 }
 
+export interface DiscussionTarget {
+  owner: string;
+  repo: string;
+  discussion_number: number;
+  discussion_node_id: string;
+  discussion_url: string;
+}
+
 const ADD_COMMENT = `
 mutation AddDiscussionComment($discussionId: ID!, $body: String!) {
   addDiscussionComment(input: { discussionId: $discussionId, body: $body }) {
@@ -32,7 +40,7 @@ mutation AddDiscussionComment($discussionId: ID!, $body: String!) {
 
 export async function addDiscussionComment(
   env: Env,
-  target: IdeaDiscussion,
+  target: DiscussionTarget,
   body: string,
 ): Promise<DiscussionCommentResult> {
   if (!env.GITHUB_TOKEN) return { ok: false, error: "GITHUB_TOKEN not configured" };
