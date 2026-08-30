@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Callbacks · Vox Bugs</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body data-page="callbacks">
+    <div id="tg-safe-top" aria-hidden="true"></div>
+    <main id="app">
+      <header class="hdr">
+        <h1 class="page-title">Callbacks</h1>
+        <p class="sub">Manage published Rich Message button responses.</p>
+      </header>
+
+      <div id="callbacks-empty" class="card empty hidden">
+        <p>No published callbacks yet.</p>
+      </div>
+      <div id="callbacks-loading" class="card empty">Loading…</div>
+      <ul id="callbacks-list" class="history callbacks-list hidden"></ul>
+
+      <section id="callback-detail" class="history-detail hidden">
+        <button id="callback-detail-back" class="detail-back" type="button">← Back to callbacks</button>
+        <div id="callback-detail-loading" class="card empty">Loading callback…</div>
+        <div id="callback-detail-content" class="hidden">
+          <div class="detail-hero card">
+            <div class="detail-topline">
+              <span id="callback-button-label" class="detail-public-id"></span>
+              <span id="callback-active-pill" class="status-pill"></span>
+            </div>
+            <h2 id="callback-source-title" class="detail-title"></h2>
+            <p id="callback-source-meta" class="detail-submitted"></p>
+          </div>
+
+          <section class="card detail-grid-card">
+            <h2>Callback</h2>
+            <div class="detail-grid callbacks-grid">
+              <div><span>Data</span><strong id="callback-data"></strong></div>
+              <div><span>Source</span><strong id="callback-source"></strong></div>
+              <div><span>Destination</span><strong id="callback-destination"></strong></div>
+              <div><span>Taps</span><strong id="callback-taps"></strong></div>
+              <div><span>Last Tapped</span><strong id="callback-last-tapped"></strong></div>
+              <div><span>Follow-Up</span><strong id="callback-followup-state"></strong></div>
+            </div>
+          </section>
+
+          <section class="card callback-editor-card">
+            <h2>Automatic Follow-Up</h2>
+            <label>Destination
+              <select id="callback-followup-destination">
+                <option value="dm">DM</option>
+                <option value="channel">Channel</option>
+              </select>
+            </label>
+            <label>Message
+              <textarea id="callback-followup-message" rows="4" placeholder="Message sent automatically after this callback is tapped."></textarea>
+            </label>
+            <div class="callback-toggle-row">
+              <label class="callback-check"><input id="callback-followup-enabled" type="checkbox" /> Follow-up enabled</label>
+              <label class="callback-check"><input id="callback-active" type="checkbox" /> Callback active</label>
+            </div>
+            <button id="callback-save" class="primary" type="button">Save Callback</button>
+            <p id="callback-save-feedback" class="hint resubmit-feedback"></p>
+          </section>
+
+          <section class="card callback-editor-card">
+            <h2>Send Update</h2>
+            <label>Destination
+              <select id="callback-manual-destination">
+                <option value="dm">DM</option>
+                <option value="channel">Channel</option>
+                <option value="github">GitHub</option>
+              </select>
+            </label>
+            <label id="callback-recipient-label">Recipient
+              <select id="callback-manual-recipient"></select>
+            </label>
+            <label>Message
+              <textarea id="callback-manual-message" rows="4" placeholder="Send a regular update using the saved callback context."></textarea>
+            </label>
+            <button id="callback-send" class="primary" type="button">Send Update</button>
+            <p id="callback-send-feedback" class="hint resubmit-feedback"></p>
+          </section>
+
+          <section class="card">
+            <h2>Interactions</h2>
+            <ul id="callback-interactions" class="callback-interactions"></ul>
+          </section>
+        </div>
+      </section>
+    </main>
+
+    <nav id="nav" aria-label="Primary">
+      <a class="nav-btn" href="./index.html" style="--icon:url(/icons/home.svg)" aria-label="Home">
+        <img class="nav-glyph" src="/icons/home.svg" alt="" />
+        <span class="nav-label">Home</span>
+      </a>
+      <a class="nav-btn" href="./create.html" style="--icon:url(/icons/create.svg)" aria-label="Create">
+        <img class="nav-glyph" src="/icons/create.svg" alt="" />
+        <span class="nav-label">Create</span>
+      </a>
+      <a class="nav-btn active" href="./callbacks.html" style="--icon:url(/icons/starchat.svg)" aria-label="Callbacks" aria-current="page">
+        <img class="nav-glyph" src="/icons/starchat.svg" alt="" />
+        <span class="nav-label">Callbacks</span>
+      </a>
+      <a class="nav-btn" href="./history.html" style="--icon:url(/icons/clockbook.svg)" aria-label="History">
+        <img class="nav-glyph" src="/icons/clockbook.svg" alt="" />
+        <span class="nav-label">History</span>
+      </a>
+    </nav>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

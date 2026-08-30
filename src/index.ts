@@ -15,6 +15,8 @@ import { dispatchUpdate } from "./telegram/webhook";
 import {
   handleConfig,
   handleBetaFeedbackAttachment,
+  handleCallbackDetail,
+  handleCallbacksList,
   handleMyBetaFeedbackDetail,
   handleMyBugDetail,
   handleMyBugs,
@@ -22,9 +24,11 @@ import {
   handleResubmitBetaFeedback,
   handleResubmitBug,
   handleResubmitIdea,
+  handleSendCallbackUpdate,
   handleSubmit,
   handleSubmitBetaFeedback,
   handleSubmitIdea,
+  handleUpdateCallback,
   handleUpdateBetaFeedback,
   handleUpload,
 } from "./miniapp/api";
@@ -59,6 +63,12 @@ export default {
     if (url.pathname === "/api/submit-idea" && req.method === "POST") return handleSubmitIdea(env, req);
     if (url.pathname === "/api/submit-beta-feedback" && req.method === "POST") return handleSubmitBetaFeedback(env, req);
     if (url.pathname === "/api/mybugs" && req.method === "GET") return handleMyBugs(env, req);
+    if (url.pathname === "/api/callbacks" && req.method === "GET") return handleCallbacksList(env, req);
+    const callbackMatch = url.pathname.match(/^\/api\/callbacks\/(\d+)$/);
+    if (callbackMatch && req.method === "GET") return handleCallbackDetail(env, req, Number(callbackMatch[1]));
+    if (callbackMatch && req.method === "PATCH") return handleUpdateCallback(env, req, Number(callbackMatch[1]));
+    const callbackSendMatch = url.pathname.match(/^\/api\/callbacks\/(\d+)\/send$/);
+    if (callbackSendMatch && req.method === "POST") return handleSendCallbackUpdate(env, req, Number(callbackSendMatch[1]));
     const detailMatch = url.pathname.match(/^\/api\/mybugs\/(\d+)$/);
     if (detailMatch && req.method === "GET") return handleMyBugDetail(env, req, Number(detailMatch[1]));
     const resubmitMatch = url.pathname.match(/^\/api\/mybugs\/(\d+)\/resubmit$/);

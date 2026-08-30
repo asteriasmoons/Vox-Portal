@@ -1,10 +1,11 @@
 // Page navigation for the three separate Mini App destinations.
 
-export type PageName = "home" | "create" | "history";
+export type PageName = "home" | "create" | "callbacks" | "history";
 
 const PAGE_PATHS: Record<PageName, string> = {
   home: "./index.html",
   create: "./create.html",
+  callbacks: "./callbacks.html",
   history: "./history.html",
 };
 

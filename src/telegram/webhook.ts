@@ -21,7 +21,7 @@ interface Update {
   chat_join_request?: import("./api").TelegramChatJoinRequest;
   callback_query?: {
     id: string;
-    from: { id: number; username?: string; first_name?: string };
+    from: { id: number; username?: string; first_name?: string; last_name?: string };
     message?: TelegramMessage;
     data?: string;
   };
@@ -161,7 +161,7 @@ async function onCallbackQuery(env: Env, cq: NonNullable<Update["callback_query"
   // RichMessageButton grammar; `menu:*` / `act:*` are the pre-10.3
   // InlineKeyboard grammar kept for in-flight callbacks. `noop` fires from
   // disabled current-selection buttons and just needs a toast.
-  const isAdminCallback =
+    const isAdminCallback =
     data === "noop" ||
     data.startsWith("rich:") ||
     data.startsWith("menu:") ||
@@ -169,6 +169,23 @@ async function onCallbackQuery(env: Env, cq: NonNullable<Update["callback_query"
     data.startsWith("idea:") ||
     data.startsWith("beta:");
   if (isAdminCallback && cq.message?.chat.id === discussionChatId(env)) {
+    const { handlePublishedCallbackTap } = await import("../callbacks/service");
+    const callbackState = await handlePublishedCallbackTap(env, {
+      callback_query_id: cq.id,
+      callback_data: data,
+      from: {
+        id: cq.from.id,
+        username: cq.from.username,
+        first_name: cq.from.first_name,
+        last_name: (cq.from as any).last_name,
+      },
+      message: cq.message,
+    });
+    if (!callbackState.proceed) {
+      const { answerCallbackQuery } = await import("./api");
+      await answerCallbackQuery(env, cq.id, "Callback inactive.", true);
+      return;
+    }
     await handleAdminCallback({
       env,
       callbackQueryId: cq.id,

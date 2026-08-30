@@ -12,6 +12,12 @@ import { ideaPublicId } from "../ideas/formatting";
 import { betaFeedbackPublicId } from "../beta/formatting";
 import { postChannelTicket, postReportToThread, postR2AttachmentToThread, postTelegramAttachmentToThread, waitForDiscussionMirror } from "../telegram/channel";
 import { createIssueForBug } from "../github/service";
+import {
+  getCallbackDetail,
+  listCallbackRecords,
+  sendManualCallbackUpdate,
+  updateCallbackConfig,
+} from "../callbacks/service";
 import { APPS, CATEGORIES, SEVERITIES, FREQUENCIES, CATEGORY_IDS, SEVERITY_IDS } from "../bugs/constants";
 import { BETA_FEEDBACK_TYPE_IDS, BETA_FEEDBACK_TYPES, BETA_OVERALL_EXPERIENCE_IDS, BETA_OVERALL_EXPERIENCES, BETA_WOULD_USE_IDS, BETA_WOULD_USE_OPTIONS } from "../beta/constants";
 import { listBugsByReporter, getBug, listAttachments, setAttachmentPostedMessage, setBugTelegramLinkage, listBetaFeedbackByReporter, getBetaFeedback, listBetaFeedbackAttachments, getBetaFeedbackAttachment } from "../db/queries";
@@ -758,6 +764,95 @@ export async function handleMyBugs(env: Env, req: Request): Promise<Response> {
       github_url:      r.github_issue_url,
     })),
   });
+}
+
+export async function handleCallbacksList(env: Env, req: Request): Promise<Response> {
+  const initData = req.headers.get("x-telegram-init-data") ?? "";
+  let user;
+  try { ({ user } = await validateInitData(env, initData)); }
+  catch { return json({ ok: false, error: "auth" }, { status: 401 }); }
+  if (!isAdmin(env, user.id)) return json({ ok: false, error: "forbidden" }, { status: 403 });
+
+  try {
+    const callbacks = await listCallbackRecords(env);
+    return json({ ok: true, callbacks });
+  } catch (e) {
+    log.error("callbacks_list_failed", e, { user_id: user.id });
+    return json({ ok: false, error: "server" }, { status: 500 });
+  }
+}
+
+export async function handleCallbackDetail(env: Env, req: Request, id: number): Promise<Response> {
+  const initData = req.headers.get("x-telegram-init-data") ?? "";
+  let user;
+  try { ({ user } = await validateInitData(env, initData)); }
+  catch { return json({ ok: false, error: "auth" }, { status: 401 }); }
+  if (!isAdmin(env, user.id)) return json({ ok: false, error: "forbidden" }, { status: 403 });
+
+  try {
+    const detail = await getCallbackDetail(env, id);
+    if (!detail.record) return json({ ok: false, error: "not_found" }, { status: 404 });
+    return json({ ok: true, ...detail });
+  } catch (e) {
+    log.error("callback_detail_failed", e, { callbackId: id, user_id: user.id });
+    return json({ ok: false, error: "server" }, { status: 500 });
+  }
+}
+
+export async function handleUpdateCallback(env: Env, req: Request, id: number): Promise<Response> {
+  const initData = req.headers.get("x-telegram-init-data") ?? "";
+  let user;
+  try { ({ user } = await validateInitData(env, initData)); }
+  catch { return json({ ok: false, error: "auth" }, { status: 401 }); }
+  if (!isAdmin(env, user.id)) return json({ ok: false, error: "forbidden" }, { status: 403 });
+
+  let payload: unknown;
+  try { payload = await req.json(); }
+  catch { return badRequest("invalid JSON"); }
+  const p = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
+  const record = await updateCallbackConfig(env, id, {
+    followup_destination: p.followup_destination === "channel" || p.followup_destination === "dm" ? p.followup_destination : undefined,
+    followup_message: typeof p.followup_message === "string" ? p.followup_message : undefined,
+    followup_enabled: typeof p.followup_enabled === "boolean" ? p.followup_enabled : undefined,
+    active: typeof p.active === "boolean" ? p.active : undefined,
+  });
+  if (!record) return json({ ok: false, error: "not_found" }, { status: 404 });
+  return json({ ok: true, record });
+}
+
+export async function handleSendCallbackUpdate(env: Env, req: Request, id: number): Promise<Response> {
+  const initData = req.headers.get("x-telegram-init-data") ?? "";
+  let user;
+  try { ({ user } = await validateInitData(env, initData)); }
+  catch { return json({ ok: false, error: "auth" }, { status: 401 }); }
+  if (!isAdmin(env, user.id)) return json({ ok: false, error: "forbidden" }, { status: 403 });
+
+  let payload: unknown;
+  try { payload = await req.json(); }
+  catch { return badRequest("invalid JSON"); }
+  const p = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
+  const message = typeof p.message === "string" ? p.message : "";
+  const destination =
+    p.destination === "channel" || p.destination === "dm" || p.destination === "github"
+      ? p.destination
+      : undefined;
+  const recipient_user_id = typeof p.recipient_user_id === "number"
+    ? p.recipient_user_id
+    : typeof p.recipient_user_id === "string" && p.recipient_user_id
+    ? Number(p.recipient_user_id)
+    : null;
+  const result = await sendManualCallbackUpdate(env, id, {
+    message,
+    destination,
+    recipient_user_id,
+    sent_by_tg_id: user.id,
+  });
+  if (!result.ok) {
+    const status = result.error === "not_found" ? 404 : result.error === "message_required" ? 400 : 502;
+    return json({ ok: false, error: result.error ?? "send_failed" }, { status });
+  }
+  const detail = await getCallbackDetail(env, id);
+  return json({ ok: true, ...detail });
 }
 
 export async function handleMyBugDetail(env: Env, req: Request, id: number): Promise<Response> {

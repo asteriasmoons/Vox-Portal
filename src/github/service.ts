@@ -254,7 +254,7 @@ function repoOf(bug: BugRow): { owner: string; repo: string } | null {
   return { owner, repo };
 }
 
-async function postComment(env: Env, bug: BugRow, body: string): Promise<SyncResult> {
+export async function postIssueComment(env: Env, bug: BugRow, body: string): Promise<SyncResult> {
   const r = repoOf(bug);
   if (!r) return { ok: false, skipped: "no_issue" };
   if (!env.GITHUB_TOKEN) return { ok: false, skipped: "disabled" };
@@ -321,7 +321,7 @@ export async function syncStatusChange(env: Env, bug: BugRow, from: string | nul
 
 _Updated through Vox Bugs._`;
   const key = `${bug.id}:status:${to}:${Math.floor(Date.now() / 1000)}`;
-  const result = await withActionKey(env, bug, key, () => postComment(env, bug, body));
+  const result = await withActionKey(env, bug, key, () => postIssueComment(env, bug, body));
 
   // Terminal-state transitions also change the GitHub issue state.
   if (to === "closed") {
@@ -335,7 +335,7 @@ _Updated through Vox Bugs._`;
       () => setIssueState(env, bug, "open"));
   } else if (to === "fixed") {
     await withActionKey(env, bug, `${bug.id}:fixed:${Math.floor(Date.now() / 1000)}`, async () => {
-      const c = await postComment(env, bug,
+      const c = await postIssueComment(env, bug,
 `### Fix Completed
 
 This bug has been marked as fixed through Vox Bugs.${bug.fixed_in_version ? `\n\nFixed in v${bug.fixed_in_version}${bug.fixed_in_build ? ` (build ${bug.fixed_in_build})` : ""}.` : ""}`);
@@ -355,7 +355,7 @@ export async function syncSeverityChange(env: Env, bug: BugRow, from: string, to
 
 _Updated through Vox Bugs._`;
   return await withActionKey(env, bug, `${bug.id}:severity:${to}:${Math.floor(Date.now() / 1000)}`,
-    () => postComment(env, bug, body));
+    () => postIssueComment(env, bug, body));
 }
 
 export async function syncCategoryChange(env: Env, bug: BugRow, from: string, to: string): Promise<SyncResult> {
@@ -366,7 +366,7 @@ export async function syncCategoryChange(env: Env, bug: BugRow, from: string, to
 
 _Updated through Vox Bugs._`;
   return await withActionKey(env, bug, `${bug.id}:category:${to}:${Math.floor(Date.now() / 1000)}`,
-    () => postComment(env, bug, body));
+    () => postIssueComment(env, bug, body));
 }
 
 export async function syncAdminNote(env: Env, bug: BugRow, note: string, byUsername: string): Promise<SyncResult> {
@@ -377,7 +377,7 @@ ${note}
 
 _Added through Vox Bugs by ${byUsername}._`;
   return await withActionKey(env, bug, `${bug.id}:note:${hashNote(note)}:${Math.floor(Date.now() / 1000)}`,
-    () => postComment(env, bug, body));
+    () => postIssueComment(env, bug, body));
 }
 
 function prettyStatus(s: string): string {

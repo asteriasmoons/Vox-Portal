@@ -8,6 +8,7 @@ import { loadHistory, initHistoryDetailBack } from "./history";
 import { initSteps } from "./steps";
 import { initIdeaPage } from "./idea";
 import { initBetaFeedbackPage } from "./beta";
+import { initCallbackDetailBack, loadCallbacks } from "./callbacks";
 import { $ } from "./dom";
 import { showTopError, clearErrors } from "./ui";
 import { initTapToDismissTextFields } from "./webview";
@@ -45,4 +46,9 @@ if (page === "create-beta-feedback") {
 if (page === "history") {
   initHistoryDetailBack();
   void loadHistory();
+}
+
+if (page === "callbacks") {
+  initCallbackDetailBack();
+  void loadCallbacks();
 }

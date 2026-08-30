@@ -688,6 +688,70 @@ img.nav-glyph { content: ""; }
 .attachment-meta { display: block; margin-top: 3px; color: var(--subtext); font-size: 12px; font-weight: 700; }
 .empty-attachment { color: var(--subtext); }
 .resubmit-card { display: grid; gap: 10px; margin: 4px 0 18px; }
+
+/* ── Callback manager ────────────────────────────────── */
+.callbacks-list .callback-item .title { overflow-wrap: anywhere; }
+.callbacks-grid { grid-template-columns: 1fr; }
+.callbacks-grid > div:first-child { grid-column: 1 / -1; }
+.callback-editor-card { display: grid; gap: 12px; }
+.callback-toggle-row {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+.callback-check {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,.22);
+  color: var(--text);
+  font-weight: 800;
+}
+.callback-check input {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--accent);
+}
+.callback-interactions {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: grid;
+  gap: 8px;
+}
+.callback-interaction {
+  padding: 11px 12px;
+  border-radius: 12px;
+  background: rgba(0,0,0,.28);
+  border: 1px solid var(--border);
+}
+.callback-interaction-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--text);
+}
+.callback-interaction-top strong {
+  font-size: 12px;
+  letter-spacing: .04em;
+}
+.callback-interaction-top span,
+.callback-interaction p {
+  color: var(--subtext);
+  font-size: 12px;
+  font-weight: 700;
+}
+.callback-interaction p { margin: 6px 0 0; }
+.callback-message-preview {
+  color: var(--text) !important;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.callback-error { color: var(--danger) !important; }
 .resubmit-card .primary,
 .resubmit-card .ghost { margin: 0; }
 .resubmit-feedback { min-height: 18px; text-align: center; }

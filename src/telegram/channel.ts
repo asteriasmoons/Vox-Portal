@@ -38,6 +38,12 @@ import {
   renderStatusUpdate,
 } from "../bugs/formatting";
 import { setBugTelegramLinkage } from "../db/queries";
+import {
+  registerPublishedRichMessageCallbacks,
+  sourceForBeta,
+  sourceForBug,
+  sourceForIdea,
+} from "../callbacks/service";
 import { log } from "../util/log";
 
 // Sends the ticket message into the Bug Reports channel.
@@ -84,6 +90,11 @@ export async function postRichReportToThread(env: Env, row: BugRow): Promise<Tel
       reply_parameters: { message_id: mirrorId, allow_sending_without_reply: true },
     });
     await setReportMessageId(env, row.id, msg.message_id);
+    await registerPublishedRichMessageCallbacks(
+      env,
+      richMessage,
+      sourceForBug(env, { ...row, report_message_id: msg.message_id }),
+    ).catch((err) => log.warn("callback_register_bug_failed", { bugId: row.id, err: String(err) }));
     return msg;
   } catch (e) {
     log.error("rich_report_post_failed", e, { bugId: row.id });
@@ -95,12 +106,18 @@ export async function postRichReportToThread(env: Env, row: BugRow): Promise<Tel
 export async function refreshRichReport(env: Env, row: BugRow): Promise<void> {
   if (!row.report_message_id) return;
   try {
+    const richMessage = buildBugReportRichMessage(row);
     await editRichMessage(
       env,
       discussionChatId(env),
       row.report_message_id,
-      buildBugReportRichMessage(row),
+      richMessage,
     );
+    await registerPublishedRichMessageCallbacks(
+      env,
+      richMessage,
+      sourceForBug(env, row),
+    ).catch((err) => log.warn("callback_register_bug_refresh_failed", { bugId: row.id, err: String(err) }));
   } catch (e) {
     // Telegram returns 400 "message is not modified" if nothing changed —
     // safe to ignore.
@@ -379,6 +396,11 @@ export async function postIdeaRichReportToThread(env: Env, row: IdeaRow): Promis
       reply_parameters: { message_id: mirrorId, allow_sending_without_reply: true },
     });
     await setIdeaReportMessageId(env, row.id, msg.message_id);
+    await registerPublishedRichMessageCallbacks(
+      env,
+      richMessage,
+      sourceForIdea(env, { ...row, report_message_id: msg.message_id }),
+    ).catch((err) => log.warn("callback_register_idea_failed", { ideaId: row.id, err: String(err) }));
     return msg;
   } catch (e) {
     log.error("idea_rich_report_post_failed", e, { ideaId: row.id });
@@ -405,7 +427,13 @@ export async function postIdeaReportToThread(
 export async function refreshIdeaRichReport(env: Env, row: IdeaRow): Promise<void> {
   if (!row.report_message_id) return;
   try {
-    await editRichMessage(env, discussionChatId(env), row.report_message_id, buildIdeaReportRichMessage(row));
+    const richMessage = buildIdeaReportRichMessage(row);
+    await editRichMessage(env, discussionChatId(env), row.report_message_id, richMessage);
+    await registerPublishedRichMessageCallbacks(
+      env,
+      richMessage,
+      sourceForIdea(env, row),
+    ).catch((err) => log.warn("callback_register_idea_refresh_failed", { ideaId: row.id, err: String(err) }));
   } catch (e) {
     log.warn("idea_rich_report_refresh_failed", { ideaId: row.id, err: String(e) });
   }
@@ -564,6 +592,11 @@ export async function postBetaFeedbackRichReportToThread(
       reply_parameters: { message_id: mirrorId, allow_sending_without_reply: true },
     });
     await setBetaFeedbackReportMessageId(env, row.id, msg.message_id);
+    await registerPublishedRichMessageCallbacks(
+      env,
+      richMessage,
+      sourceForBeta(env, { ...row, report_message_id: msg.message_id }),
+    ).catch((err) => log.warn("callback_register_beta_failed", { betaFeedbackId: row.id, err: String(err) }));
     return msg;
   } catch (e) {
     log.error("beta_feedback_rich_report_post_failed", e, { betaFeedbackId: row.id });
@@ -590,7 +623,13 @@ export async function postBetaFeedbackReportToThread(
 export async function refreshBetaFeedbackRichReport(env: Env, row: BetaFeedbackRow): Promise<void> {
   if (!row.report_message_id) return;
   try {
-    await editRichMessage(env, discussionChatId(env), row.report_message_id, buildBetaFeedbackRichMessage(row));
+    const richMessage = buildBetaFeedbackRichMessage(row);
+    await editRichMessage(env, discussionChatId(env), row.report_message_id, richMessage);
+    await registerPublishedRichMessageCallbacks(
+      env,
+      richMessage,
+      sourceForBeta(env, row),
+    ).catch((err) => log.warn("callback_register_beta_refresh_failed", { betaFeedbackId: row.id, err: String(err) }));
   } catch (e) {
     log.warn("beta_feedback_rich_report_refresh_failed", { betaFeedbackId: row.id, err: String(e) });
   }
