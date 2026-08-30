@@ -190,7 +190,7 @@ export async function postIdeaGitHubPreviewToThread(
   const replyToMessageId = row.report_message_id ?? row.discussion_message_id ?? row.discussion_thread_id;
   try {
     await sendMessage(env, discussionChatId(env),
-      `GitHub Discussion\n${esc(url)}`,
+      `<b>GitHub Discussion</b>\n${esc(url)}`,
       {
         parse_mode: "HTML",
         message_thread_id: row.discussion_thread_id,

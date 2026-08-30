@@ -295,7 +295,7 @@ export function buildIdeaReportRichMessage(idea: IdeaRow): { blocks: unknown[] }
   blocks.push(heading(`IDEA — ${ideaPublicId(idea)}`, 2));
   blocks.push(paragraph(idea.title));
 
-  blocks.push(kvTable([
+  blocks.push(solidHeaderKvTable([
     ["App",    idea.app],
     ["Status", st.label],
   ]));
@@ -306,16 +306,18 @@ export function buildIdeaReportRichMessage(idea: IdeaRow): { blocks: unknown[] }
     if (!v || !v.trim()) return;
     blocks.push(heading(h, 4));
     blocks.push(paragraph(v));
+    blocks.push(divider());
   };
-  sec("What I Want", idea.what_i_want);
+  sec("My Vision", idea.what_i_want);
   sec("Why It Would Be Useful", idea.why_useful);
-  sec("How It Should Work", idea.how_it_works);
-  sec("Where It Belongs", idea.where_it_belongs);
+  sec("How It Works", idea.how_it_works);
+  sec("Space Placement", idea.where_it_belongs);
   sec("Extra Notes", idea.notes);
 
   if (idea.decision_reason && (idea.status === "accepted" || idea.status === "rejected")) {
     blocks.push(heading(idea.status === "accepted" ? "Accepted — Reason" : "Rejected — Reason", 4));
     blocks.push(paragraph(idea.decision_reason));
+    blocks.push(divider());
   }
 
   const reporter = idea.reporter_username
@@ -326,7 +328,8 @@ export function buildIdeaReportRichMessage(idea: IdeaRow): { blocks: unknown[] }
 
   if (idea.github_comment_url) {
     blocks.push(divider());
-    blocks.push(paragraph(`GitHub Discussion comment: ${idea.github_comment_url}`));
+    blocks.push(heading("GitHub Discussion", 4));
+    blocks.push(paragraph(idea.github_comment_url));
   }
 
   blocks.push(divider());
