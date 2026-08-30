@@ -32,8 +32,8 @@ export interface DiscussionTarget {
 }
 
 const ADD_COMMENT = `
-mutation AddDiscussionComment($discussionId: ID!, $body: String!) {
-  addDiscussionComment(input: { discussionId: $discussionId, body: $body }) {
+mutation AddDiscussionComment($discussionId: ID!, $body: String!, $replyToId: ID) {
+  addDiscussionComment(input: { discussionId: $discussionId, body: $body, replyToId: $replyToId }) {
     comment { id url }
   }
 }`;
@@ -56,11 +56,13 @@ export async function addDiscussionComment(
   env: Env,
   target: DiscussionTarget,
   body: string,
+  opts: { replyToId?: string | null } = {},
 ): Promise<DiscussionCommentResult> {
   if (!env.GITHUB_TOKEN) return { ok: false, error: "GITHUB_TOKEN not configured" };
   return await discussionMutation(env, ADD_COMMENT, {
     discussionId: target.discussion_node_id,
     body,
+    replyToId: opts.replyToId ?? null,
   }, "addDiscussionComment");
 }
 
@@ -89,7 +91,7 @@ export async function deleteDiscussionComment(
 async function discussionMutation(
   env: Env,
   query: string,
-  variables: Record<string, string>,
+  variables: Record<string, string | null>,
   resultKey: "addDiscussionComment" | "updateDiscussionComment" | "deleteDiscussionComment",
 ): Promise<DiscussionCommentResult> {
   try {

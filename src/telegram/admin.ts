@@ -391,7 +391,7 @@ async function handleIdeaCallback(ctx: CallbackCtx): Promise<boolean> {
 }
 
 async function syncIdeaStatusToGitHub(env: Env, idea: import("../db/types").IdeaRow, toStatus: string): Promise<void> {
-  if (!idea.github_discussion_id) return;
+  if (!idea.github_discussion_id || !idea.github_comment_id) return;
   const { resolveIdeaDiscussion, ideaStatusMeta } = await import("../ideas/constants");
   const target = resolveIdeaDiscussion(idea.app);
   if (!target) return;
@@ -400,7 +400,7 @@ async function syncIdeaStatusToGitHub(env: Env, idea: import("../db/types").Idea
   const body = `### Idea status: ${st.emoji} ${st.label}\n\n${
     idea.decision_reason ? `${idea.decision_reason}\n\n` : ""
   }_Updated through the Voxiverse Telegram Mini App._`;
-  await addDiscussionComment(env, target, body);
+  await addDiscussionComment(env, target, body, { replyToId: idea.github_comment_id });
 }
 
 // ── Beta Feedback callback handler ─────────────────────
@@ -706,19 +706,20 @@ async function handleReasonCommand(
     log.warn("idea_reason_reporter_dm_failed", { ideaId, err: String(e) });
   }
 
-  if (fresh.github_discussion_id) {
+  if (fresh.github_discussion_id && fresh.github_comment_id) {
     const { resolveIdeaDiscussion } = await import("../ideas/constants");
     const target = resolveIdeaDiscussion(fresh.app);
     if (target) {
       const { addDiscussionComment } = await import("../github/discussions");
       const label = fresh.status === "accepted" ? "Accepted" : fresh.status === "rejected" ? "Rejected" : "Update";
       await addDiscussionComment(env, target,
-        `### ${label} — Reason\n\n${args}\n\n_Updated through the Voxiverse Telegram Mini App._`);
+        `### ${label} — Reason\n\n${args}\n\n_Updated through the Voxiverse Telegram Mini App._`,
+        { replyToId: fresh.github_comment_id });
     }
   }
 
   const sendOpts = fresh.discussion_thread_id
-    ? { message_thread_id: fresh.discussion_thread_id, reply_parameters: { message_id: fresh.discussion_message_id ?? fresh.discussion_thread_id } }
+    ? { message_thread_id: fresh.discussion_thread_id, reply_parameters: { message_id: fresh.report_message_id ?? fresh.discussion_message_id ?? fresh.discussion_thread_id } }
     : msg.reply_to_message?.message_id
       ? { reply_parameters: { message_id: msg.reply_to_message.message_id } }
       : {};
