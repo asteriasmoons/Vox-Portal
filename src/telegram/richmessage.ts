@@ -86,6 +86,25 @@ function solidHeaderKvTable(rows: [string, string][], caption?: string) {
   };
 }
 
+function blueTable(rows: string[][], caption?: string) {
+  return {
+    type: "table",
+    is_compact: true,
+    is_bordered: false,
+    is_striped: false,
+    ...(caption ? { caption } : {}),
+    cells: rows.map((row) => row.map((text) => ({
+      text,
+      is_header: true,
+      align: "left",
+    }))),
+  };
+}
+
+function blueKvTable(rows: [string, string][], caption?: string) {
+  return blueTable(rows.map(([k, v]) => [k, v]), caption);
+}
+
 // ── Public: bug report Rich Message ───────────────────────
 // Builds a complete InputRichMessage body for the given bug, INCLUDING
 // the management button bar. State (Status/Severity/Category) is rendered
@@ -119,14 +138,15 @@ export function buildBugReportRichMessage(bug: BugRow): { blocks: unknown[] } {
   kv(deviceRows, "OS", bug.os);
   if (deviceRows.length) {
     blocks.push(heading("Device Details", 4));
-    blocks.push(kvTable(deviceRows));
+    blocks.push(blueKvTable(deviceRows));
     blocks.push(divider());
   }
 
   // Context Details table — live state rows update in place on every
   // management action.
+  blocks.push(heading("Context Details", 4));
   blocks.push(
-    kvTable([
+    blueKvTable([
       ["Status", `${st.emoji} ${st.label}`],
       ["Bug Type", bugType.label],
       ["Severity", sev.label],
@@ -139,27 +159,15 @@ export function buildBugReportRichMessage(bug: BugRow): { blocks: unknown[] } {
 
   if (steps.length) {
     blocks.push(heading("Steps to Reproduce", 4));
-    blocks.push({
-      type: "table",
-      is_compact: true,
-      is_bordered: false,
-      is_striped: false,
-      cells: [
-        [
-          { text: "Step", is_header: true, align: "left" },
-          { text: "Action", is_header: true, align: "left" },
-        ],
-        ...steps.map((step, index) => [
-          { text: String(index + 1), is_header: true, align: "left" },
-          { text: step, align: "left" },
-        ]),
-      ],
-    });
+    blocks.push(blueTable([
+      ["Step", "Action"],
+      ...steps.map((step, index) => [String(index + 1), step]),
+    ]));
     blocks.push(divider());
   }
 
   blocks.push(heading("Behavior Details", 4));
-  blocks.push(kvTable([
+  blocks.push(blueKvTable([
     ["Expected", bug.expected_behavior || "Not provided"],
     ["Actual", bug.actual_behavior],
   ]));
