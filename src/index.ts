@@ -17,6 +17,7 @@ import {
   handleBetaFeedbackAttachment,
   handleCallbackDetail,
   handleCallbacksList,
+  handleMe,
   handleMyBetaFeedbackDetail,
   handleMyBugDetail,
   handleMyBugs,
@@ -58,6 +59,7 @@ export default {
 
     // ── Mini App API ────────────────────────────────────────
     if (url.pathname === "/api/config" && req.method === "GET") return handleConfig();
+    if (url.pathname === "/api/me" && req.method === "GET") return handleMe(env, req);
     if (url.pathname === "/api/upload" && req.method === "POST") return handleUpload(env, req);
     if (url.pathname === "/api/submit" && req.method === "POST") return handleSubmit(env, req);
     if (url.pathname === "/api/submit-idea" && req.method === "POST") return handleSubmitIdea(env, req);

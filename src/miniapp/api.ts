@@ -54,6 +54,27 @@ export async function handleConfig(): Promise<Response> {
   });
 }
 
+// GET /api/me — signed Telegram user context for client-side feature gates.
+export async function handleMe(env: Env, req: Request): Promise<Response> {
+  const initData = req.headers.get("x-telegram-init-data") ?? "";
+  let user;
+  try {
+    ({ user } = await validateInitData(env, initData));
+  } catch {
+    return json({ ok: false, error: "auth" }, { status: 401 });
+  }
+  return json({
+    ok: true,
+    user: {
+      id: user.id,
+      username: user.username ?? null,
+      first_name: user.first_name ?? null,
+      last_name: user.last_name ?? null,
+    },
+    is_admin: isAdmin(env, user.id),
+  });
+}
+
 // POST /api/upload — stores one file in R2 and returns a key.
 // The Mini App calls this per-file so the /submit payload stays small.
 export async function handleUpload(env: Env, req: Request): Promise<Response> {
