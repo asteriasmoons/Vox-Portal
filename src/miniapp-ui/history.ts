@@ -298,7 +298,7 @@ function renderIdeaDetail(idea: Record<string, unknown>, attachments: Attachment
   const copyCard = document.querySelector<HTMLElement>(".detail-copy-card");
   if (copyCard) {
     const headings = copyCard.querySelectorAll("h2, h3");
-    const labels = ["My Vision", "Why It Would Be Useful", "How It Works", "Additional Notes"];
+    const labels = ["MY VISION", "WHY IT WOULD BE USEFUL", "HOW IT WORKS", "ADDITIONAL NOTES"];
     headings.forEach((h, i) => { if (labels[i]) h.textContent = labels[i]; });
   }
   setText("#detail-actual",   get("what_i_want"));
@@ -316,7 +316,7 @@ function renderIdeaDetail(idea: Record<string, unknown>, attachments: Attachment
   if (existingBetaChanges) existingBetaChanges.remove();
   if (where && copyCard) {
     const h = document.createElement("h3");
-    h.textContent = "Space Placement";
+    h.textContent = "SPACE PLACEMENT";
     const p = document.createElement("p");
     p.id = "detail-where-belongs";
     p.textContent = where;
