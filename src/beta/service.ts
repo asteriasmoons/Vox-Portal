@@ -43,6 +43,7 @@ import { discussionChatId } from "../config";
 import { addDiscussionComment, updateDiscussionComment } from "../github/discussions";
 import { esc } from "../util/html";
 import { log } from "../util/log";
+import { ensureWorkRef } from "../work/service";
 
 export type IncomingBetaFeedbackAttachment =
   | {
@@ -76,6 +77,7 @@ export async function createBetaFeedback(
 ): Promise<BetaFeedbackRow> {
   const publicNumber = await nextBetaFeedbackNumber(env);
   let row = await insertBetaFeedback(env, input, publicNumber);
+  await ensureWorkRef(env, "beta", row.id);
   log.info("beta_feedback_created", { betaFeedbackId: row.id, publicNumber });
 
   let channelMessageId: number;

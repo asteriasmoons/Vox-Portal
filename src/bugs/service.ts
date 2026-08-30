@@ -30,6 +30,7 @@ import { type StatusId } from "./constants";
 import { esc } from "../util/html";
 import { log } from "../util/log";
 import { createIssueForBug, type GitHubOutcome } from "../github/service";
+import { ensureWorkRef } from "../work/service";
 
 // Attachment payload accepted by createBug.
 export type IncomingAttachment =
@@ -72,6 +73,7 @@ export async function createBug(
 ): Promise<BugRow> {
   const publicNumber = await nextBugNumber(env);
   let row = await insertBug(env, input, publicNumber);
+  await ensureWorkRef(env, "bug", row.id);
   log.info("bug_created", { bugId: row.id, publicNumber });
 
   // 1) Channel ticket

@@ -526,16 +526,21 @@ export async function handleAdminGroupCommand(
   const text = (msg.text ?? "").trim();
   if (!text.startsWith("/")) return false;
 
+  const spaceIdx = text.indexOf(" ");
+  const rawCmd = spaceIdx === -1 ? text.slice(1) : text.slice(1, spaceIdx);
+  const cmd = rawCmd.split("@")[0].toLowerCase();
+  const args = spaceIdx === -1 ? "" : text.slice(spaceIdx + 1).trim();
+
+  if (cmd === "case" || cmd === "assign") {
+    const { handleWorkAssignmentCommand } = await import("../work/commands");
+    return await handleWorkAssignmentCommand(env, msg, cmd, args);
+  }
+
   // Anonymous supergroup admins are represented by Telegram through
   // `sender_chat` (the discussion group itself), not a usable personal User.
   const anonymousAdmin = msg.sender_chat?.id === discussionChatId(env);
   const userAdmin = !!msg.from && isAdmin(env, msg.from.id);
   if (!anonymousAdmin && !userAdmin) return false;
-
-  const spaceIdx = text.indexOf(" ");
-  const rawCmd = spaceIdx === -1 ? text.slice(1) : text.slice(1, spaceIdx);
-  const cmd = rawCmd.split("@")[0].toLowerCase();
-  const args = spaceIdx === -1 ? "" : text.slice(spaceIdx + 1).trim();
 
   // /reason is an idea-flow command; it doesn't need a matching bug row.
   // Handle it before the bug lookup so it works in idea threads too.

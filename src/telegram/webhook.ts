@@ -103,6 +103,14 @@ async function onMessage(env: Env, msg: TelegramMessage) {
     return;
   }
 
+  // Case A.5: admin commands in another group/admin context. Work assignment
+  // commands resolve by internal Work ID, so they do not need a linked
+  // discussion thread. The handler itself enforces ADMIN_TELEGRAM_IDS.
+  if (msg.chat.type !== "private" && msg.text?.startsWith("/")) {
+    const handled = await handleAdminGroupCommand(env, msg);
+    if (handled) return;
+  }
+
   // Case B: private chat with the bot.
   if (msg.chat.type === "private") {
     const handledJoinApproval = await handleJoinApprovalPasswordMessage(env, msg);

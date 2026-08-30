@@ -23,6 +23,7 @@ import { BUG_APP_CONFIGS, areValidBugAffectedAreas, bugAffectedAreaLabels, bugOp
 import { BETA_FEEDBACK_TYPE_IDS, BETA_FEEDBACK_TYPES, BETA_OVERALL_EXPERIENCE_IDS, BETA_OVERALL_EXPERIENCES, BETA_WOULD_USE_IDS, BETA_WOULD_USE_OPTIONS } from "../beta/constants";
 import { listBugsByReporter, getBug, listAttachments, setAttachmentPostedMessage, setBugTelegramLinkage, listBetaFeedbackByReporter, getBetaFeedback, listBetaFeedbackAttachments, getBetaFeedbackAttachment } from "../db/queries";
 import { publicIdOf } from "../bugs/formatting";
+import { getWorkRefBySubmission, listWorkHistory, type WorkHistoryFilters } from "../work/service";
 import { log } from "../util/log";
 
 const MAX_ATTACHMENTS = 10;
@@ -221,9 +222,11 @@ export async function handleMyIdeaDetail(env: Env, req: Request, id: number): Pr
   const row = await getIdea(env, id);
   if (!row || row.reporter_tg_id !== user.id) return json({ ok: false, error: "not_found" }, { status: 404 });
   const atts = await listIdeaAttachments(env, row.id);
+  const userIsAdmin = isAdmin(env, user.id);
+  const workRef = userIsAdmin ? await getWorkRefBySubmission(env, "idea", row.id) : null;
   return json({
     ok: true,
-    idea: { ...row, public_id: ideaPublicId(row), can_resubmit: isAdmin(env, user.id) },
+    idea: { ...row, public_id: ideaPublicId(row), can_resubmit: userIsAdmin, ...(workRef ? { work_id: workRef.work_id } : {}) },
     attachments: atts.map((a) => ({ id: a.id, kind: a.kind, file_name: a.file_name, mime_type: a.mime_type, size_bytes: a.size_bytes, posted_message_id: a.posted_message_id })),
   });
 }
@@ -267,9 +270,11 @@ export async function handleMyBetaFeedbackDetail(env: Env, req: Request, id: num
   const row = await getBetaFeedback(env, id);
   if (!row || row.reporter_tg_id !== user.id) return json({ ok: false, error: "not_found" }, { status: 404 });
   const atts = await listBetaFeedbackAttachments(env, row.id);
+  const userIsAdmin = isAdmin(env, user.id);
+  const workRef = userIsAdmin ? await getWorkRefBySubmission(env, "beta", row.id) : null;
   return json({
     ok: true,
-    beta_feedback: { ...row, public_id: betaFeedbackPublicId(row), can_resubmit: isAdmin(env, user.id) },
+    beta_feedback: { ...row, public_id: betaFeedbackPublicId(row), can_resubmit: userIsAdmin, ...(workRef ? { work_id: workRef.work_id } : {}) },
     attachments: atts.map((a) => ({
       id: a.id,
       kind: a.kind,
@@ -822,6 +827,46 @@ export async function handleCallbacksList(env: Env, req: Request): Promise<Respo
   }
 }
 
+export async function handleWorkHistory(env: Env, req: Request): Promise<Response> {
+  const initData = req.headers.get("x-telegram-init-data") ?? "";
+  let user;
+  try { ({ user } = await validateInitData(env, initData)); }
+  catch { return json({ ok: false, error: "auth" }, { status: 401 }); }
+  if (!isAdmin(env, user.id)) return json({ ok: false, error: "forbidden" }, { status: 403 });
+
+  const url = new URL(req.url);
+  const filters: WorkHistoryFilters = {};
+  const type = url.searchParams.get("type");
+  if (type === "bug" || type === "idea" || type === "beta") filters.submission_type = type;
+  const app = url.searchParams.get("app");
+  if (app) filters.app = app;
+  const assignee = url.searchParams.get("assignee");
+  if (assignee) filters.assignee = assignee;
+  const eventType = url.searchParams.get("event_type");
+  if (eventType) filters.event_type = eventType;
+  const state = url.searchParams.get("state");
+  if (state) filters.activity_state = state;
+  const search = url.searchParams.get("q");
+  if (search) filters.search = search;
+
+  try {
+    const entries = await listWorkHistory(env, filters);
+    return json({
+      ok: true,
+      entries,
+      filters: {
+        apps: unique(entries.map((e) => e.app)),
+        assignees: unique(entries.map((e) => e.assigned_username).filter(Boolean) as string[]),
+        event_types: unique(entries.map((e) => e.event_type)),
+        states: unique(entries.map((e) => e.activity_status).filter(Boolean) as string[]),
+      },
+    });
+  } catch (e) {
+    log.error("work_history_failed", e, { user_id: user.id });
+    return json({ ok: false, error: "server" }, { status: 500 });
+  }
+}
+
 export async function handleCallbackDetail(env: Env, req: Request, id: number): Promise<Response> {
   const initData = req.headers.get("x-telegram-init-data") ?? "";
   let user;
@@ -909,6 +954,8 @@ export async function handleMyBugDetail(env: Env, req: Request, id: number): Pro
   const row = await getBug(env, id);
   if (!row || row.reporter_tg_id !== user.id) return json({ ok: false, error: "not_found" }, { status: 404 });
   const atts = await listAttachments(env, row.id);
+  const userIsAdmin = isAdmin(env, user.id);
+  const workRef = userIsAdmin ? await getWorkRefBySubmission(env, "bug", row.id) : null;
   return json({
     ok: true,
     bug: {
@@ -918,7 +965,8 @@ export async function handleMyBugDetail(env: Env, req: Request, id: number): Pro
       feature_label: bugOptionLabel(row.app, "feature", row.feature),
       affected_area_labels: bugAffectedAreaLabels(row.app, row.affected_areas),
       github_url: row.github_sub_issue_url ?? row.github_issue_url,
-      can_resubmit: isAdmin(env, user.id),
+      can_resubmit: userIsAdmin,
+      ...(workRef ? { work_id: workRef.work_id } : {}),
     },
     attachments: atts.map((a) => ({ id: a.id, kind: a.kind, file_name: a.file_name, mime_type: a.mime_type, size_bytes: a.size_bytes, posted_message_id: a.posted_message_id })),
   });
@@ -1091,6 +1139,9 @@ function nonEmpty(s: unknown): boolean {
 }
 function nz(s: unknown): string | null {
   return typeof s === "string" && s.trim() ? s.trim() : null;
+}
+function unique(values: string[]): string[] {
+  return [...new Set(values.filter(Boolean))].sort((a, b) => a.localeCompare(b));
 }
 function kindOf(mime: string | undefined): IncomingAttachment["kind"] {
   const m = (mime ?? "").toLowerCase();

@@ -445,6 +445,34 @@ fieldset.severity-options legend {
 .tips li { margin-bottom: 6px; }
 
 /* ── History view ───────────────────────────────────── */
+.history-mode-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin: 0 0 14px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  background: rgba(0,0,0,.24);
+}
+.history-mode {
+  min-height: 42px;
+  margin: 0;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: transparent;
+  color: var(--subtext);
+  box-shadow: none;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.history-mode.active {
+  border-color: rgba(165,138,217,.45);
+  background: linear-gradient(135deg, rgba(116,86,179,.48), rgba(197,80,173,.32));
+  color: var(--text);
+}
 .history { list-style: none; padding: 0; margin: 0; }
 .history li {
   background:
@@ -476,6 +504,40 @@ fieldset.severity-options legend {
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
 }
 .history .meta { color: var(--subtext); font-size: 12px; font-weight: 700; margin-top: 6px; }
+.work-history-filters {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.work-history-filters input,
+.work-history-filters select {
+  margin: 0;
+}
+.work-filter-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+.work-history-list .work-entry .title {
+  display: block;
+  -webkit-line-clamp: initial;
+}
+.work-entry .work-note {
+  margin-top: 10px;
+  padding: 10px 12px;
+  border-left: 3px solid rgba(165,138,217,.72);
+  border-radius: 10px;
+  background: rgba(0,0,0,.22);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.work-entry .work-id-inline {
+  color: var(--hint);
+  font-weight: 900;
+  letter-spacing: .05em;
+}
 .empty { text-align: center; color: var(--subtext); font-weight: 700; }
 .empty .primary { margin-top: 14px; }
 
@@ -955,7 +1017,12 @@ img.nav-glyph { content: ""; }
 .resubmit-card .primary,
 .resubmit-card .ghost { margin: 0; }
 .resubmit-feedback { min-height: 18px; text-align: center; }
-@media (max-width: 420px) { .detail-grid { grid-template-columns: 1fr; } }
+@media (max-width: 420px) {
+  .detail-grid,
+  .work-filter-grid {
+    grid-template-columns: 1fr;
+  }
+}
 
 /* Resubmit feedback — prominent, readable state instead of exposing internal codes. */
 .resubmit-feedback {

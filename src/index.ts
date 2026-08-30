@@ -32,6 +32,7 @@ import {
   handleUpdateCallback,
   handleUpdateBetaFeedback,
   handleUpload,
+  handleWorkHistory,
 } from "./miniapp/api";
 import { registerCommands } from "./telegram/commands";
 import { log } from "./util/log";
@@ -65,6 +66,7 @@ export default {
     if (url.pathname === "/api/submit-idea" && req.method === "POST") return handleSubmitIdea(env, req);
     if (url.pathname === "/api/submit-beta-feedback" && req.method === "POST") return handleSubmitBetaFeedback(env, req);
     if (url.pathname === "/api/mybugs" && req.method === "GET") return handleMyBugs(env, req);
+    if (url.pathname === "/api/work-history" && req.method === "GET") return handleWorkHistory(env, req);
     if (url.pathname === "/api/callbacks" && req.method === "GET") return handleCallbacksList(env, req);
     const callbackMatch = url.pathname.match(/^\/api\/callbacks\/(\d+)$/);
     if (callbackMatch && req.method === "GET") return handleCallbackDetail(env, req, Number(callbackMatch[1]));

@@ -46,6 +46,7 @@ import {
 import { addDiscussionComment, deleteDiscussionComment } from "../github/discussions";
 import { esc } from "../util/html";
 import { log } from "../util/log";
+import { ensureWorkRef } from "../work/service";
 
 export type IncomingIdeaAttachment =
   | {
@@ -78,6 +79,7 @@ export async function createIdea(
 ): Promise<IdeaRow> {
   const publicNumber = await nextIdeaNumber(env);
   let row = await insertIdea(env, input, publicNumber);
+  await ensureWorkRef(env, "idea", row.id);
   log.info("idea_created", { ideaId: row.id, publicNumber });
 
   // 1) Channel ticket — throws on failure (bug flow does too).

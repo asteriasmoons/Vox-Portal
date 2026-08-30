@@ -256,3 +256,46 @@ export interface NewAttachmentInput {
   width?: number | null;
   height?: number | null;
 }
+
+// ── Internal Work Tracking ───────────────────────────────
+export type WorkSubmissionType = "bug" | "idea" | "beta";
+
+export interface WorkRefRow {
+  id: number;
+  work_id: string;
+  submission_type: WorkSubmissionType;
+  submission_record_id: number;
+  created_at: number;
+}
+
+export type WorkAssignmentStatus = "active" | "completed" | "released" | "cancelled";
+
+export interface WorkAssignmentRow {
+  id: number;
+  submission_type: WorkSubmissionType;
+  submission_record_id: number;
+  work_ref_id: number;
+  assigned_username: string;
+  assigned_telegram_user_id: number | null;
+  assigned_by: number;
+  assigned_by_username: string | null;
+  note: string;
+  status: WorkAssignmentStatus;
+  assigned_at: number;
+  ended_at: number | null;
+  created_at: number;
+  updated_at: number;
+}
+
+export interface WorkHistoryRow {
+  id: number;
+  event_type: string;
+  submission_type: WorkSubmissionType;
+  submission_record_id: number;
+  work_ref_id: number;
+  assignment_id: number | null;
+  actor_telegram_id: number | null;
+  actor_username: string | null;
+  metadata: string;
+  created_at: number;
+}

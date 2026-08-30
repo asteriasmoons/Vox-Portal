@@ -11,16 +11,58 @@
     <div id="tg-safe-top" aria-hidden="true"></div>
     <main id="app">
       <header class="hdr">
-        <h1 class="page-title">My Reports</h1>
-        <p class="sub">Every bug you've filed and its current status.</p>
+        <h1 class="page-title">History</h1>
+        <p class="sub">Review submitted posts and internal Deviverse work activity.</p>
       </header>
 
-      <div id="history-empty" class="card empty hidden">
-        <p>No reports yet. When you file one, it'll show up here.</p>
-        <a class="primary nav-link" href="./create.html">Report a bug</a>
+      <div id="history-mode-switch" class="history-mode-switch hidden" role="tablist" aria-label="History type">
+        <button id="posts-history-tab" class="history-mode active" type="button" aria-selected="true">Posts History</button>
+        <button id="work-history-tab" class="history-mode" type="button" aria-selected="false">Work History</button>
       </div>
-      <div id="history-loading" class="card empty">Loading…</div>
-      <ul id="history-list" class="history hidden"></ul>
+
+      <section id="posts-history-panel">
+        <div id="history-empty" class="card empty hidden">
+          <p>No reports yet. When you file one, it'll show up here.</p>
+          <a class="primary nav-link" href="./create.html">Report a bug</a>
+        </div>
+        <div id="history-loading" class="card empty">Loading…</div>
+        <ul id="history-list" class="history hidden"></ul>
+      </section>
+
+      <section id="work-history-panel" class="hidden">
+        <section class="card work-history-filters" aria-label="Work History filters">
+          <input id="work-history-search" type="search" placeholder="Search ID, Work ID, username, note" autocomplete="off" />
+          <div class="work-filter-grid">
+            <select id="work-history-type" aria-label="Submission type">
+              <option value="">All Types</option>
+              <option value="bug">Bug Reports</option>
+              <option value="idea">Ideas</option>
+              <option value="beta">Beta Feedback</option>
+            </select>
+            <select id="work-history-app" aria-label="App">
+              <option value="">All Apps</option>
+            </select>
+            <select id="work-history-assignee" aria-label="Assignee">
+              <option value="">All Assignees</option>
+            </select>
+            <select id="work-history-event" aria-label="Activity">
+              <option value="">All Activity</option>
+            </select>
+            <select id="work-history-state" aria-label="State">
+              <option value="">All States</option>
+              <option value="active">Active</option>
+              <option value="completed">Completed</option>
+              <option value="released">Released</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </div>
+        </section>
+        <div id="work-history-empty" class="card empty hidden">
+          <p>No internal work activity yet.</p>
+        </div>
+        <div id="work-history-loading" class="card empty hidden">Loading work history…</div>
+        <ul id="work-history-list" class="history work-history-list hidden"></ul>
+      </section>
 
       <section id="history-detail" class="history-detail hidden">
         <button id="history-detail-back" class="detail-back" type="button">← Back to reports</button>

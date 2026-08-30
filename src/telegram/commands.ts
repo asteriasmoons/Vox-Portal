@@ -20,6 +20,8 @@ const COMMANDS = [
 
 const ADMIN_GROUP_COMMANDS = [
   { command: "reason", description: "Add a reason to an idea decision" },
+  { command: "case", description: "Assign a bug case by internal Work ID" },
+  { command: "assign", description: "Assign an idea by internal Work ID" },
 ];
 
 export async function registerCommands(env: Env) {
@@ -29,7 +31,7 @@ export async function registerCommands(env: Env) {
 
 // Idempotent auto-registration triggered from the webhook. Bump
 // COMMANDS_VERSION to force existing bots to re-register.
-const COMMANDS_VERSION = "v3";
+const COMMANDS_VERSION = "v4";
 const COMMANDS_KEY = "meta:commands_registered";
 export async function ensureCommandsRegistered(env: Env) {
   try {
@@ -68,6 +70,11 @@ export async function handleCommand(env: Env, msg: TelegramMessage, cmd: string,
     case "mybugs":
       await sendMyBugs(env, chatId, tgId);
       return true;
+    case "case":
+    case "assign": {
+      const { handleWorkAssignmentCommand } = await import("../work/commands");
+      return await handleWorkAssignmentCommand(env, msg, cmd, args);
+    }
     default:
       return false;
   }
