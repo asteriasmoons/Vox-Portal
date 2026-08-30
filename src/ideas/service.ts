@@ -43,7 +43,7 @@ import {
 import {
   resolveIdeaDiscussion, ideaStatusMeta, type IdeaStatusId,
 } from "./constants";
-import { addDiscussionComment } from "../github/discussions";
+import { addDiscussionComment, deleteDiscussionComment } from "../github/discussions";
 import { esc } from "../util/html";
 import { log } from "../util/log";
 
@@ -156,9 +156,18 @@ async function maybePostGitHubDiscussion(
     await saveIdeaGitHubMeta(env, row.id, { github_status: "skipped_disabled", github_error: "GITHUB_TOKEN not configured" });
     return;
   }
-  const { renderIdeaGitHubComment } = await import("./formatting");
   const attNotes = attachments.map((a) => a.source === "r2" ? a.file_name : (a.file_name ?? `${a.kind} attachment`));
-  const body = renderIdeaGitHubComment(row, attNotes);
+  await postFreshIdeaGitHubDiscussion(env, row, target, attNotes);
+}
+
+async function postFreshIdeaGitHubDiscussion(
+  env: Env,
+  row: IdeaRow,
+  target: NonNullable<ReturnType<typeof resolveIdeaDiscussion>>,
+  attachmentNotes: string[],
+): Promise<IdeaRow | null> {
+  const { renderIdeaGitHubComment } = await import("./formatting");
+  const body = renderIdeaGitHubComment(row, attachmentNotes);
   const res = await addDiscussionComment(env, target, body);
   if (res.ok && res.comment_id && res.comment_url) {
     await saveIdeaGitHubMeta(env, row.id, {
@@ -174,11 +183,50 @@ async function maybePostGitHubDiscussion(
     const fresh = await getIdea(env, row.id);
     if (fresh) await refreshIdeaRichReport(env, fresh);
     await postIdeaGitHubPreviewToThread(env, fresh ?? row, res.comment_url);
+    return fresh ?? row;
   } else {
     const reason = res.error ?? "unknown";
     log.warn("idea_github_failed", { ideaId: row.id, reason });
     await saveIdeaGitHubMeta(env, row.id, { github_status: "failed", github_error: reason.slice(0, 200) });
+    return null;
   }
+}
+
+async function replaceIdeaGitHubDiscussionForResubmit(env: Env, row: IdeaRow): Promise<IdeaRow | null> {
+  const target = resolveIdeaDiscussion(row.app);
+  if (!target) {
+    const reason = `No Ideas discussion configured for "${row.app}"`;
+    log.info("idea_resend_github_no_mapping", { ideaId: row.id, app: row.app });
+    await saveIdeaGitHubMeta(env, row.id, { github_status: "skipped_no_mapping", github_error: reason });
+    return null;
+  }
+  if (!env.GITHUB_TOKEN) {
+    log.warn("idea_resend_github_disabled", { ideaId: row.id });
+    await saveIdeaGitHubMeta(env, row.id, { github_status: "skipped_disabled", github_error: "GITHUB_TOKEN not configured" });
+    return null;
+  }
+
+  if (row.github_comment_id) {
+    const deleted = await deleteDiscussionComment(env, row.github_comment_id);
+    if (!deleted.ok) {
+      const reason = deleted.error ?? "unknown";
+      if (!isMissingDiscussionCommentError(reason)) {
+        log.warn("idea_resend_github_delete_failed", { ideaId: row.id, reason });
+        await saveIdeaGitHubMeta(env, row.id, { github_status: "failed", github_error: reason.slice(0, 200) });
+        return null;
+      }
+      log.info("idea_resend_github_comment_already_missing", { ideaId: row.id, commentId: row.github_comment_id });
+    }
+  }
+
+  const stored = await listIdeaAttachments(env, row.id);
+  const attachmentNotes = stored.map((a) => a.file_name ?? `${a.kind} attachment`);
+  const freshBase = (await getIdea(env, row.id)) ?? row;
+  return await postFreshIdeaGitHubDiscussion(env, freshBase, target, attachmentNotes);
+}
+
+function isMissingDiscussionCommentError(reason: string): boolean {
+  return /could not resolve|not found|does not exist|not exist|missing/i.test(reason);
 }
 
 export async function postIdeaGitHubPreviewToThread(
@@ -311,10 +359,6 @@ export async function resendIdeaToTelegram(
   }
   row = { ...row, report_message_id: reportMessage.message_id };
 
-  if (row.github_comment_url) {
-    await postIdeaGitHubPreviewToThread(env, row);
-  }
-
   const stored = await listIdeaAttachments(env, row.id);
   for (const a of stored) {
     if (a.posted_message_id) continue;
@@ -339,12 +383,13 @@ export async function resendIdeaToTelegram(
     }
   }
 
-  // GitHub is independent and idempotent from the user's perspective: only
-  // retry it when no Discussion comment exists yet.
+  // A manual resubmit replaces the GitHub Discussion comment so the linked
+  // preview points at a fresh GitHub comment for this resubmitted rich post.
   row = (await getIdea(env, ideaId)) ?? row;
-  if (!row.github_comment_id) {
-    try { await maybePostGitHubDiscussion(env, row, []); }
-    catch (e) { log.warn("idea_resend_github_retry_failed", { ideaId, err: String(e) }); }
+  try {
+    row = (await replaceIdeaGitHubDiscussionForResubmit(env, row)) ?? ((await getIdea(env, ideaId)) ?? row);
+  } catch (e) {
+    log.warn("idea_resend_github_replace_failed", { ideaId, err: String(e) });
   }
 
   return { row: (await getIdea(env, ideaId)) ?? row, telegram: "posted" };

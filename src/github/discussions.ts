@@ -45,6 +45,13 @@ mutation UpdateDiscussionComment($commentId: ID!, $body: String!) {
   }
 }`;
 
+const DELETE_COMMENT = `
+mutation DeleteDiscussionComment($commentId: ID!) {
+  deleteDiscussionComment(input: { id: $commentId }) {
+    comment { id }
+  }
+}`;
+
 export async function addDiscussionComment(
   env: Env,
   target: DiscussionTarget,
@@ -69,11 +76,21 @@ export async function updateDiscussionComment(
   }, "updateDiscussionComment");
 }
 
+export async function deleteDiscussionComment(
+  env: Env,
+  commentId: string,
+): Promise<DiscussionCommentResult> {
+  if (!env.GITHUB_TOKEN) return { ok: false, error: "GITHUB_TOKEN not configured" };
+  return await discussionMutation(env, DELETE_COMMENT, {
+    commentId,
+  }, "deleteDiscussionComment");
+}
+
 async function discussionMutation(
   env: Env,
   query: string,
   variables: Record<string, string>,
-  resultKey: "addDiscussionComment" | "updateDiscussionComment",
+  resultKey: "addDiscussionComment" | "updateDiscussionComment" | "deleteDiscussionComment",
 ): Promise<DiscussionCommentResult> {
   try {
     const res = await fetch(GH_GRAPHQL, {
