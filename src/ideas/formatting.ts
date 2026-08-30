@@ -40,21 +40,22 @@ export function renderIdeaChannelTicket(row: IdeaRow): string {
 // Markdown for the GitHub Discussion comment.
 export function renderIdeaGitHubComment(row: IdeaRow, attachmentNotes: string[] = []): string {
   const parts: string[] = [];
-  parts.push(`## 💡 Idea: ${row.title}`);
-  parts.push(`**App:** ${row.app}`);
+  parts.push(`## ${row.title}`);
 
   const sec = (h: string, v: string | null | undefined) => {
     const t = (v ?? "").trim();
     if (!t) return;
+    parts.push(`---`);
     parts.push(`### ${h}\n\n${t}`);
   };
-  sec("What I Want", row.what_i_want);
+  sec("My Vision", row.what_i_want);
   sec("Why It Would Be Useful", row.why_useful);
-  sec("How It Should Work", row.how_it_works);
-  sec("Where It Belongs", row.where_it_belongs);
+  sec("How It Works", row.how_it_works);
+  sec("Space Placement", row.where_it_belongs);
   sec("Extra Notes", row.notes);
 
   if (attachmentNotes.length) {
+    parts.push(`---`);
     parts.push(`### Reference\n\n${attachmentNotes.map((a) => `- ${a}`).join("\n")}`);
   }
 

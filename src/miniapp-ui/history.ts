@@ -298,7 +298,7 @@ function renderIdeaDetail(idea: Record<string, unknown>, attachments: Attachment
   const copyCard = document.querySelector<HTMLElement>(".detail-copy-card");
   if (copyCard) {
     const headings = copyCard.querySelectorAll("h2, h3");
-    const labels = ["What I Want", "Why It Would Be Useful", "How It Should Work", "Additional Notes"];
+    const labels = ["My Vision", "Why It Would Be Useful", "How It Works", "Additional Notes"];
     headings.forEach((h, i) => { if (labels[i]) h.textContent = labels[i]; });
   }
   setText("#detail-actual",   get("what_i_want"));
@@ -306,7 +306,7 @@ function renderIdeaDetail(idea: Record<string, unknown>, attachments: Attachment
   setText("#detail-steps",    get("how_it_works") || "Not provided");
   setText("#detail-notes",    get("notes")        || "None");
 
-  // Where It Belongs — the bug template has no field for this. Inject a
+  // Space Placement — the bug template has no field for this. Inject a
   // dedicated row into the copy card so the info isn't lost.
   const where = String(get("where_it_belongs") || "").trim();
   const existingWhere = document.getElementById("detail-where-belongs");
@@ -316,7 +316,7 @@ function renderIdeaDetail(idea: Record<string, unknown>, attachments: Attachment
   if (existingBetaChanges) existingBetaChanges.remove();
   if (where && copyCard) {
     const h = document.createElement("h3");
-    h.textContent = "Where It Belongs";
+    h.textContent = "Space Placement";
     const p = document.createElement("p");
     p.id = "detail-where-belongs";
     p.textContent = where;
