@@ -88,6 +88,14 @@ interface ExtractedButton {
   callback_data: string;
 }
 
+interface StatusHistoryRow {
+  id: number;
+  from_status: string | null;
+  to_status: string;
+  changed_by: number | null;
+  created_at: number;
+}
+
 export async function registerPublishedRichMessageCallbacks(
   env: Env,
   richMessage: InputRichMessage,
@@ -95,42 +103,8 @@ export async function registerPublishedRichMessageCallbacks(
 ): Promise<void> {
   const buttons = extractCallbackButtons(richMessage);
   if (!buttons.length) return;
-  const now = unixNow();
   for (const button of buttons) {
-    await env.DB.prepare(
-      `INSERT INTO callback_records (
-         callback_data, button_label, source_kind, source_id, source_public_id,
-         source_title, app, source_chat_id, source_message_id, source_thread_id,
-         created_at, updated_at
-       )
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-       ON CONFLICT(callback_data) DO UPDATE SET
-         button_label = excluded.button_label,
-         source_kind = excluded.source_kind,
-         source_id = excluded.source_id,
-         source_public_id = excluded.source_public_id,
-         source_title = excluded.source_title,
-         app = excluded.app,
-         source_chat_id = excluded.source_chat_id,
-         source_message_id = excluded.source_message_id,
-         source_thread_id = excluded.source_thread_id,
-         updated_at = excluded.updated_at`,
-    )
-      .bind(
-        button.callback_data,
-        button.label,
-        context.source_kind,
-        context.source_id,
-        context.source_public_id,
-        context.source_title,
-        context.app ?? null,
-        context.source_chat_id,
-        context.source_message_id,
-        context.source_thread_id,
-        now,
-        now,
-      )
-      .run();
+    await upsertCallbackRecord(env, button, context);
   }
 }
 
@@ -159,14 +133,159 @@ export async function backfillPublishedCallbacks(env: Env): Promise<void> {
 
 export async function listCallbackRecords(env: Env): Promise<CallbackRecord[]> {
   await backfillPublishedCallbacks(env);
+  await backfillHistoricalCallbackInteractions(env);
   const res = await env.DB.prepare(
-    `SELECT * FROM callback_records ORDER BY COALESCE(last_tapped_at, updated_at) DESC, id DESC`,
+    `SELECT
+       r.id,
+       r.callback_data,
+       r.button_label,
+       r.source_kind,
+       r.source_id,
+       r.source_public_id,
+       r.source_title,
+       r.app,
+       r.source_chat_id,
+       r.source_message_id,
+       r.source_thread_id,
+       r.followup_destination,
+       r.followup_message,
+       r.followup_enabled,
+       r.active,
+       (
+         SELECT COUNT(*)
+         FROM callback_interactions i
+         WHERE i.callback_id = r.id
+           AND i.interaction_type = 'tap'
+       ) AS tap_count,
+       (
+         SELECT MAX(i.created_at)
+         FROM callback_interactions i
+         WHERE i.callback_id = r.id
+           AND i.interaction_type = 'tap'
+       ) AS last_tapped_at,
+       r.created_at,
+       r.updated_at
+     FROM callback_records r
+     WHERE EXISTS (
+       SELECT 1 FROM callback_interactions i
+       WHERE i.callback_id = r.id
+         AND i.interaction_type = 'tap'
+     )
+     ORDER BY last_tapped_at DESC, r.id DESC`,
   ).all<CallbackRecord>();
   return res.results ?? [];
 }
 
+async function backfillHistoricalCallbackInteractions(env: Env): Promise<void> {
+  await backfillBugStatusInteractions(env);
+  await backfillIdeaStatusInteractions(env);
+  await backfillBetaStatusInteractions(env);
+}
+
+async function backfillBugStatusInteractions(env: Env): Promise<void> {
+  const histories = (await env.DB.prepare(
+    `SELECT id, from_status, to_status, changed_by, created_at, bug_id
+     FROM status_history
+     ORDER BY id ASC`,
+  ).all<StatusHistoryRow & { bug_id: number }>()).results ?? [];
+
+  for (const history of histories) {
+    const bug = await env.DB.prepare(`SELECT * FROM bugs WHERE id = ?`).bind(history.bug_id).first<BugRow>();
+    if (!bug) continue;
+    const record = await ensureHistoricalCallbackRecord(env, {
+      callback_data: `rich:act:${history.bug_id}:status:${history.to_status}`,
+      label: bugStatusButtonLabel(history.to_status),
+    }, sourceForBug(env, bug));
+    if (!record) continue;
+    await insertHistoricalInteraction(env, record, `history:status_history:${history.id}`, history);
+  }
+}
+
+async function backfillIdeaStatusInteractions(env: Env): Promise<void> {
+  const histories = (await env.DB.prepare(
+    `SELECT id, from_status, to_status, changed_by, created_at, idea_id
+     FROM idea_status_history
+     ORDER BY id ASC`,
+  ).all<StatusHistoryRow & { idea_id: number }>()).results ?? [];
+
+  for (const history of histories) {
+    const idea = await env.DB.prepare(`SELECT * FROM ideas WHERE id = ?`).bind(history.idea_id).first<IdeaRow>();
+    if (!idea) continue;
+    const record = await ensureHistoricalCallbackRecord(env, {
+      callback_data: `idea:act:${history.idea_id}:status:${history.to_status}`,
+      label: ideaStatusButtonLabel(history.to_status),
+    }, sourceForIdea(env, idea));
+    if (!record) continue;
+    await insertHistoricalInteraction(env, record, `history:idea_status_history:${history.id}`, history);
+  }
+}
+
+async function backfillBetaStatusInteractions(env: Env): Promise<void> {
+  const histories = (await env.DB.prepare(
+    `SELECT id, from_status, to_status, changed_by, created_at, beta_feedback_id
+     FROM beta_feedback_status_history
+     ORDER BY id ASC`,
+  ).all<StatusHistoryRow & { beta_feedback_id: number }>()).results ?? [];
+
+  for (const history of histories) {
+    const beta = await env.DB.prepare(`SELECT * FROM beta_feedback WHERE id = ?`).bind(history.beta_feedback_id).first<BetaFeedbackRow>();
+    if (!beta) continue;
+    const record = await ensureHistoricalCallbackRecord(env, {
+      callback_data: `beta:menu:${history.beta_feedback_id}:status`,
+      label: "Status",
+    }, sourceForBeta(env, beta));
+    if (!record) continue;
+    await insertHistoricalInteraction(env, record, `history:beta_feedback_status_history:${history.id}`, history);
+  }
+}
+
+async function ensureHistoricalCallbackRecord(
+  env: Env,
+  button: ExtractedButton,
+  context: CallbackSourceContext,
+): Promise<CallbackRecord | null> {
+  await upsertCallbackRecord(env, button, context);
+  return await findCallbackByData(env, button.callback_data);
+}
+
 export async function getCallbackRecord(env: Env, id: number): Promise<CallbackRecord | null> {
-  return await env.DB.prepare(`SELECT * FROM callback_records WHERE id = ?`).bind(id).first<CallbackRecord>();
+  return await env.DB.prepare(
+    `SELECT
+       r.id,
+       r.callback_data,
+       r.button_label,
+       r.source_kind,
+       r.source_id,
+       r.source_public_id,
+       r.source_title,
+       r.app,
+       r.source_chat_id,
+       r.source_message_id,
+       r.source_thread_id,
+       r.followup_destination,
+       r.followup_message,
+       r.followup_enabled,
+       r.active,
+       (
+         SELECT COUNT(*)
+         FROM callback_interactions i
+         WHERE i.callback_id = r.id
+           AND i.interaction_type = 'tap'
+       ) AS tap_count,
+       COALESCE(
+         (
+           SELECT MAX(i.created_at)
+           FROM callback_interactions i
+           WHERE i.callback_id = r.id
+             AND i.interaction_type = 'tap'
+         ),
+         r.last_tapped_at
+       ) AS last_tapped_at,
+       r.created_at,
+       r.updated_at
+     FROM callback_records r
+     WHERE r.id = ?`,
+  ).bind(id).first<CallbackRecord>();
 }
 
 export async function getCallbackDetail(env: Env, id: number): Promise<{
@@ -394,6 +513,48 @@ function extractCallbackButtons(richMessage: InputRichMessage): ExtractedButton[
   });
 }
 
+async function upsertCallbackRecord(
+  env: Env,
+  button: ExtractedButton,
+  context: CallbackSourceContext,
+): Promise<void> {
+  const now = unixNow();
+  await env.DB.prepare(
+    `INSERT INTO callback_records (
+       callback_data, button_label, source_kind, source_id, source_public_id,
+       source_title, app, source_chat_id, source_message_id, source_thread_id,
+       created_at, updated_at
+     )
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(callback_data) DO UPDATE SET
+       button_label = excluded.button_label,
+       source_kind = excluded.source_kind,
+       source_id = excluded.source_id,
+       source_public_id = excluded.source_public_id,
+       source_title = excluded.source_title,
+       app = excluded.app,
+       source_chat_id = excluded.source_chat_id,
+       source_message_id = excluded.source_message_id,
+       source_thread_id = excluded.source_thread_id,
+       updated_at = excluded.updated_at`,
+  )
+    .bind(
+      button.callback_data,
+      button.label,
+      context.source_kind,
+      context.source_id,
+      context.source_public_id,
+      context.source_title,
+      context.app ?? null,
+      context.source_chat_id,
+      context.source_message_id,
+      context.source_thread_id,
+      now,
+      now,
+    )
+    .run();
+}
+
 function textValue(value: unknown): string {
   if (typeof value === "string") return value;
   if (Array.isArray(value)) return value.map(textValue).join("").trim();
@@ -402,6 +563,81 @@ function textValue(value: unknown): string {
     if (typeof obj.text === "string") return obj.text;
   }
   return "";
+}
+
+async function insertHistoricalInteraction(
+  env: Env,
+  record: CallbackRecord,
+  historyKey: string,
+  history: StatusHistoryRow,
+): Promise<void> {
+  const existing = await env.DB.prepare(
+    `SELECT id FROM callback_interactions WHERE callback_query_id = ? LIMIT 1`,
+  ).bind(historyKey).first<{ id: number }>();
+  if (existing) return;
+
+  await insertInteraction(env, record.id, {
+    interaction_type: "tap",
+    callback_query_id: historyKey,
+    telegram_user_id: history.changed_by,
+    telegram_username: null,
+    telegram_first_name: null,
+    telegram_last_name: null,
+    private_chat_id: history.changed_by,
+    source_chat_id: record.source_chat_id,
+    source_message_id: record.source_message_id,
+    source_thread_id: record.source_thread_id,
+    response_destination: null,
+    response_message: null,
+    response_chat_id: null,
+    response_message_id: null,
+    delivery_status: "backfilled",
+    delivery_error: null,
+    sent_by_tg_id: null,
+    created_at: history.created_at,
+  });
+
+  await env.DB.prepare(
+    `UPDATE callback_records
+     SET tap_count = (
+       SELECT COUNT(*)
+       FROM callback_interactions
+       WHERE callback_id = ?
+         AND interaction_type = 'tap'
+     ),
+     last_tapped_at = (
+       SELECT MAX(created_at)
+       FROM callback_interactions
+       WHERE callback_id = ?
+         AND interaction_type = 'tap'
+     ),
+     updated_at = ?
+     WHERE id = ?`,
+  ).bind(record.id, record.id, unixNow(), record.id).run();
+}
+
+function bugStatusButtonLabel(status: string): string {
+  const labels: Record<string, string> = {
+    confirmed: "Confirmed",
+    investigating: "Investigating",
+    in_progress: "In Progress",
+    fix_in_testing: "Fix In Testing",
+    fixed: "Mark Fixed",
+    closed: "Close",
+    cannot_reproduce: "Cannot Reproduce",
+  };
+  return labels[status] ?? "Status";
+}
+
+function ideaStatusButtonLabel(status: string): string {
+  const labels: Record<string, string> = {
+    accepted: "Accept",
+    rejected: "Reject",
+    in_progress: "In Progress",
+    in_testing: "In Testing",
+    shipped: "Mark Shipped",
+  };
+  return labels[status] ?? "Status";
 }
 
 async function findCallbackByData(env: Env, callbackData: string): Promise<CallbackRecord | null> {
@@ -543,7 +779,7 @@ function failedDelivery(error: string) {
 async function insertInteraction(
   env: Env,
   callbackId: number,
-  input: Omit<CallbackInteraction, "id" | "callback_id" | "created_at">,
+  input: Omit<CallbackInteraction, "id" | "callback_id" | "created_at"> & { created_at?: number },
 ): Promise<void> {
   await env.DB.prepare(
     `INSERT INTO callback_interactions (
@@ -574,7 +810,7 @@ async function insertInteraction(
       input.delivery_status,
       input.delivery_error,
       input.sent_by_tg_id,
-      unixNow(),
+      input.created_at ?? unixNow(),
     )
     .run();
 }
