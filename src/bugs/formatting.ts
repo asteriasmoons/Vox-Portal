@@ -4,6 +4,7 @@
 import type { BugRow } from "../db/types";
 import { esc, trunc } from "../util/html";
 import { statusMeta, severityMeta, categoryMeta, frequencyMeta } from "./constants";
+import { bugOptionLabel } from "./app-metadata";
 
 export function publicIdOf(row: Pick<BugRow, "public_number">): string {
   return `BUG-${String(row.public_number).padStart(4, "0")}`;
@@ -27,7 +28,7 @@ export function formatTimestamp(unixSec: number): string {
 export function renderChannelTicket(row: BugRow): string {
   const st = statusMeta(row.status);
   const sev = severityMeta(row.severity);
-  const cat = categoryMeta(row.category);
+  const bugType = categoryMeta(row.bug_type ?? row.category);
   const id = publicIdOf(row);
   const reporter = row.reporter_username
     ? `@${esc(row.reporter_username)}`
@@ -39,8 +40,9 @@ export function renderChannelTicket(row: BugRow): string {
   lines.push("");
   lines.push(`Status: ${st.emoji} <b>${esc(st.label)}</b>`);
   lines.push(`Severity: <b>${esc(sev.label)}</b>`);
-  lines.push(`Category: ${esc(cat.label)}`);
+  lines.push(`Bug Type: ${esc(bugType.label)}`);
   lines.push(`App: <b>${esc(row.app)}</b>`);
+  if (row.feature) lines.push(`Feature: ${esc(bugOptionLabel(row.app, "feature", row.feature))}`);
   if (row.app_version) lines.push(`Version: ${esc(row.app_version)}`);
   if (row.app_build) lines.push(`Build: ${esc(row.app_build)}`);
   if (row.device) lines.push(`Device: ${esc(row.device)}`);

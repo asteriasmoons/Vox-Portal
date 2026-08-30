@@ -1,5 +1,6 @@
 import { $, requireEl } from "./dom";
 import { INIT_DATA, haptic } from "./tg";
+import { TelegramMessageEditor } from "./telegram-message-editor";
 
 type CallbackDestination = "dm" | "channel";
 type ManualDestination = CallbackDestination | "github";
@@ -14,6 +15,8 @@ interface CallbackRecord {
   app: string | null;
   followup_destination: CallbackDestination;
   followup_message: string;
+  followup_message_html: string | null;
+  followup_message_doc: string | null;
   followup_enabled: number;
   active: number;
   tap_count: number;
@@ -33,6 +36,8 @@ interface CallbackInteraction {
   source_thread_id: number | null;
   response_destination: ManualDestination | null;
   response_message: string | null;
+  response_message_html: string | null;
+  response_message_doc: string | null;
   response_chat_id: number | null;
   response_message_id: number | null;
   delivery_status: string;
@@ -48,6 +53,8 @@ interface Recipient {
 
 let currentId: number | null = null;
 let currentRecipients: Recipient[] = [];
+let followupEditor: TelegramMessageEditor | null = null;
+let manualEditor: TelegramMessageEditor | null = null;
 
 export async function loadCallbacks(): Promise<void> {
   const loading = requireEl("#callbacks-loading");
@@ -78,6 +85,8 @@ export async function loadCallbacks(): Promise<void> {
 }
 
 export function initCallbackDetailBack(): void {
+  followupEditor = new TelegramMessageEditor(requireEl<HTMLElement>("#callback-followup-message"));
+  manualEditor = new TelegramMessageEditor(requireEl<HTMLElement>("#callback-manual-message"));
   requireEl<HTMLButtonElement>("#callback-detail-back").addEventListener("click", () => {
     requireEl("#callback-detail").classList.add("hidden");
     requireEl("#callbacks-list").classList.remove("hidden");
@@ -166,12 +175,16 @@ function renderDetail(record: CallbackRecord, interactions: CallbackInteraction[
   setText("#callback-followup-state", record.followup_enabled ? "Enabled" : "Disabled");
 
   requireEl<HTMLSelectElement>("#callback-followup-destination").value = record.followup_destination;
-  requireEl<HTMLTextAreaElement>("#callback-followup-message").value = record.followup_message ?? "";
+  followupEditor?.setValue({
+    text: record.followup_message ?? "",
+    html: record.followup_message_html,
+    doc: record.followup_message_doc,
+  });
   requireEl<HTMLInputElement>("#callback-followup-enabled").checked = !!record.followup_enabled;
   requireEl<HTMLInputElement>("#callback-active").checked = !!record.active;
   setText("#callback-save-feedback", "");
   setText("#callback-send-feedback", "");
-  requireEl<HTMLTextAreaElement>("#callback-manual-message").value = "";
+  manualEditor?.clear();
   renderRecipients();
   renderInteractions(interactions);
 }
@@ -265,7 +278,7 @@ async function saveCurrentCallback(): Promise<void> {
       headers: { ...authHeaders(), "content-type": "application/json" },
       body: JSON.stringify({
         followup_destination: requireEl<HTMLSelectElement>("#callback-followup-destination").value,
-        followup_message: requireEl<HTMLTextAreaElement>("#callback-followup-message").value,
+        ...followupPayload(),
         followup_enabled: requireEl<HTMLInputElement>("#callback-followup-enabled").checked,
         active: requireEl<HTMLInputElement>("#callback-active").checked,
       }),
@@ -283,6 +296,15 @@ async function saveCurrentCallback(): Promise<void> {
   }
 }
 
+function followupPayload(): { followup_message: string; followup_message_html: string; followup_message_doc: string } {
+  const value = followupEditor?.getValue() ?? { text: "", html: "", doc: "" };
+  return {
+    followup_message: value.text,
+    followup_message_html: value.html,
+    followup_message_doc: value.doc,
+  };
+}
+
 async function sendCurrentUpdate(): Promise<void> {
   if (!currentId) return;
   const btn = requireEl<HTMLButtonElement>("#callback-send");
@@ -291,13 +313,16 @@ async function sendCurrentUpdate(): Promise<void> {
   feedback.textContent = "Sending…";
   try {
     const destination = requireEl<HTMLSelectElement>("#callback-manual-destination").value as ManualDestination;
+    const message = manualEditor?.getValue() ?? { text: "", html: "", doc: "" };
     const res = await fetch(`/api/callbacks/${currentId}/send`, {
       method: "POST",
       headers: { ...authHeaders(), "content-type": "application/json" },
       body: JSON.stringify({
         destination,
         recipient_user_id: destination === "dm" ? requireEl<HTMLSelectElement>("#callback-manual-recipient").value : null,
-        message: requireEl<HTMLTextAreaElement>("#callback-manual-message").value,
+        message: message.text,
+        message_html: message.html,
+        message_doc: message.doc,
       }),
     });
     const data = await res.json() as { ok: boolean; error?: string; record?: CallbackRecord; interactions?: CallbackInteraction[]; recipients?: Recipient[] };

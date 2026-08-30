@@ -18,7 +18,8 @@ import {
   sendManualCallbackUpdate,
   updateCallbackConfig,
 } from "../callbacks/service";
-import { APPS, CATEGORIES, SEVERITIES, FREQUENCIES, CATEGORY_IDS, SEVERITY_IDS } from "../bugs/constants";
+import { APPS, CATEGORIES, SEVERITIES, FREQUENCIES, CATEGORY_IDS, SEVERITY_IDS, categoryMeta, type CategoryId, type SeverityId } from "../bugs/constants";
+import { BUG_APP_CONFIGS, areValidBugAffectedAreas, bugAffectedAreaLabels, bugOptionLabel, isValidBugFeature } from "../bugs/app-metadata";
 import { BETA_FEEDBACK_TYPE_IDS, BETA_FEEDBACK_TYPES, BETA_OVERALL_EXPERIENCE_IDS, BETA_OVERALL_EXPERIENCES, BETA_WOULD_USE_IDS, BETA_WOULD_USE_OPTIONS } from "../beta/constants";
 import { listBugsByReporter, getBug, listAttachments, setAttachmentPostedMessage, setBugTelegramLinkage, listBetaFeedbackByReporter, getBetaFeedback, listBetaFeedbackAttachments, getBetaFeedbackAttachment } from "../db/queries";
 import { publicIdOf } from "../bugs/formatting";
@@ -45,6 +46,7 @@ export async function handleConfig(): Promise<Response> {
   return json({
     ok: true,
     apps: APPS,
+    bug_apps: BUG_APP_CONFIGS,
     categories: CATEGORIES,
     severities: SEVERITIES,
     frequencies: FREQUENCIES,
@@ -161,9 +163,12 @@ export async function handleSubmit(env: Env, req: Request): Promise<Response> {
         device: nz(payload.device),
         os: nz(payload.os),
         // Payload was validated to be within our enum sets above.
-        category: payload.category as import("../bugs/constants").CategoryId,
-        severity: payload.severity as import("../bugs/constants").SeverityId,
-        title: payload.title.trim(),
+        category: (payload.bug_type || payload.category) as CategoryId,
+        bug_type: (payload.bug_type || payload.category) as CategoryId,
+        feature: payload.feature.trim(),
+        affected_areas: JSON.stringify(payload.affected_areas),
+        severity: payload.severity as SeverityId,
+        title: deriveBugTitle(payload),
         actual_behavior: payload.actual_behavior.trim(),
         expected_behavior: nz(payload.expected_behavior),
         reproduction_steps: nz(payload.reproduction_steps),
@@ -177,11 +182,11 @@ export async function handleSubmit(env: Env, req: Request): Promise<Response> {
     // The Telegram flow succeeded — if it hadn't, createBug would have
     // thrown before this line. GitHub is inferred from persisted metadata.
     const github =
-      row.github_issue_number && row.github_issue_url && row.github_repo
+      row.github_sub_issue_number && row.github_sub_issue_url && row.github_repo
         ? {
             status: "created" as const,
-            issue_number: row.github_issue_number,
-            issue_url: row.github_issue_url,
+            issue_number: row.github_sub_issue_number,
+            issue_url: row.github_sub_issue_url,
             repo: row.github_repo,
           }
         : row.github_status === "skipped_no_mapping"
@@ -731,12 +736,20 @@ export async function handleMyBugs(env: Env, req: Request): Promise<Response> {
         title: r.title,
         app: r.app,
         status: r.status,
+        severity: r.severity,
+        category: r.category,
+        bug_type: r.bug_type ?? r.category,
+        bug_type_label: categoryMeta(r.bug_type ?? r.category).label,
+        feature: r.feature,
+        feature_label: bugOptionLabel(r.app, "feature", r.feature),
+        affected_areas: r.affected_areas,
+        affected_area_labels: bugAffectedAreaLabels(r.app, r.affected_areas),
         created_at: r.created_at,
         telegram_posted: !!r.channel_message_id,
         report_posted: !!r.report_message_id,
         can_resubmit: canResubmit,
-        github_created: !!r.github_issue_number,
-        github_url: r.github_issue_url,
+        github_created: !!r.github_sub_issue_number,
+        github_url: r.github_sub_issue_url ?? r.github_issue_url,
       })),
       ...ideaRows.map((r) => ({
         type: "idea" as const,
@@ -775,14 +788,20 @@ export async function handleMyBugs(env: Env, req: Request): Promise<Response> {
       status: r.status,
       severity: r.severity,
       category: r.category,
+      bug_type: r.bug_type ?? r.category,
+      bug_type_label: categoryMeta(r.bug_type ?? r.category).label,
+      feature: r.feature,
+      feature_label: bugOptionLabel(r.app, "feature", r.feature),
+      affected_areas: r.affected_areas,
+      affected_area_labels: bugAffectedAreaLabels(r.app, r.affected_areas),
       created_at: r.created_at,
       // Delivery state — history rows use these to decide whether to
       // render the "Resend to Telegram" affordance.
       telegram_posted: !!r.channel_message_id,
       report_posted:   !!r.report_message_id,
       can_resubmit:    canResubmit,
-      github_created:  !!r.github_issue_number,
-      github_url:      r.github_issue_url,
+      github_created:  !!r.github_sub_issue_number,
+      github_url:      r.github_sub_issue_url ?? r.github_issue_url,
     })),
   });
 }
@@ -834,6 +853,8 @@ export async function handleUpdateCallback(env: Env, req: Request, id: number): 
   const record = await updateCallbackConfig(env, id, {
     followup_destination: p.followup_destination === "channel" || p.followup_destination === "dm" ? p.followup_destination : undefined,
     followup_message: typeof p.followup_message === "string" ? p.followup_message : undefined,
+    followup_message_html: typeof p.followup_message_html === "string" ? p.followup_message_html : p.followup_message_html === null ? null : undefined,
+    followup_message_doc: typeof p.followup_message_doc === "string" ? p.followup_message_doc : p.followup_message_doc === null ? null : undefined,
     followup_enabled: typeof p.followup_enabled === "boolean" ? p.followup_enabled : undefined,
     active: typeof p.active === "boolean" ? p.active : undefined,
   });
@@ -853,6 +874,8 @@ export async function handleSendCallbackUpdate(env: Env, req: Request, id: numbe
   catch { return badRequest("invalid JSON"); }
   const p = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
   const message = typeof p.message === "string" ? p.message : "";
+  const message_html = typeof p.message_html === "string" ? p.message_html : null;
+  const message_doc = typeof p.message_doc === "string" ? p.message_doc : null;
   const destination =
     p.destination === "channel" || p.destination === "dm" || p.destination === "github"
       ? p.destination
@@ -864,6 +887,8 @@ export async function handleSendCallbackUpdate(env: Env, req: Request, id: numbe
     : null;
   const result = await sendManualCallbackUpdate(env, id, {
     message,
+    message_html,
+    message_doc,
     destination,
     recipient_user_id,
     sent_by_tg_id: user.id,
@@ -886,7 +911,15 @@ export async function handleMyBugDetail(env: Env, req: Request, id: number): Pro
   const atts = await listAttachments(env, row.id);
   return json({
     ok: true,
-    bug: { ...row, public_id: publicIdOf(row), can_resubmit: isAdmin(env, user.id) },
+    bug: {
+      ...row,
+      public_id: publicIdOf(row),
+      bug_type_label: categoryMeta(row.bug_type ?? row.category).label,
+      feature_label: bugOptionLabel(row.app, "feature", row.feature),
+      affected_area_labels: bugAffectedAreaLabels(row.app, row.affected_areas),
+      github_url: row.github_sub_issue_url ?? row.github_issue_url,
+      can_resubmit: isAdmin(env, user.id),
+    },
     attachments: atts.map((a) => ({ id: a.id, kind: a.kind, file_name: a.file_name, mime_type: a.mime_type, size_bytes: a.size_bytes, posted_message_id: a.posted_message_id })),
   });
 }
@@ -911,8 +944,8 @@ export async function handleResubmitBug(env: Env, req: Request, id: number): Pro
         public_id: publicIdOf(fresh),
         telegram,
         report_posted: !!fresh.report_message_id,
-        github_created: !!fresh.github_issue_number,
-        github_url: fresh.github_issue_url,
+        github_created: !!fresh.github_sub_issue_number,
+        github_url: fresh.github_sub_issue_url ?? fresh.github_issue_url,
       });
     } catch (e) {
       log.error("resubmit_from_scratch_failed", e, { bugId: id });
@@ -976,11 +1009,11 @@ export async function handleResubmitBug(env: Env, req: Request, id: number): Pro
   try {
     await createIssueForBug(env, row.id);
     const fresh = await getBug(env, row.id);
-    if (fresh?.github_issue_url) {
+    if (fresh?.github_sub_issue_url || fresh?.github_issue_url) {
       await postGitHubIssuePreviewToThread(env, {
         ...fresh,
         report_message_id: row.report_message_id,
-      });
+      }, fresh.github_sub_issue_url ?? fresh.github_issue_url ?? undefined);
     }
   } catch (e) {
     log.warn("resubmit_github_preview_failed", { bugId: row.id, err: String(e) });
@@ -992,8 +1025,8 @@ export async function handleResubmitBug(env: Env, req: Request, id: number): Pro
     public_id: publicIdOf(finalRow),
     telegram: "posted",
     report_posted: true,
-    github_created: !!finalRow.github_issue_number,
-    github_url: finalRow.github_issue_url,
+    github_created: !!finalRow.github_sub_issue_number,
+    github_url: finalRow.github_sub_issue_url ?? finalRow.github_issue_url,
   });
 }
 
@@ -1005,8 +1038,11 @@ interface SubmitPayload {
   device?: string;
   os?: string;
   category: string;
+  bug_type: string;
+  feature: string;
+  affected_areas: string[];
   severity: string;
-  title: string;
+  title?: string;
   actual_behavior: string;
   expected_behavior?: string;
   reproduction_steps?: string;
@@ -1021,10 +1057,21 @@ function validatePayload(p: SubmitPayload): string[] {
   const errs: string[] = [];
   if (!p || typeof p !== "object") return ["invalid body"];
   if (!nonEmpty(p.app)) errs.push("app is required");
-  if (!nonEmpty(p.title)) errs.push("title is required");
+  if (!nonEmpty(p.app_version)) errs.push("version is required");
+  if (!nonEmpty(p.app_build)) errs.push("build is required");
+  if (!nonEmpty(p.device)) errs.push("device is required");
+  if (!nonEmpty(p.os)) errs.push("os is required");
+  if (!nonEmpty(p.feature) || !isValidBugFeature(p.app, p.feature)) errs.push("feature invalid");
+  if (!Array.isArray(p.affected_areas) || !areValidBugAffectedAreas(p.app, p.affected_areas)) errs.push("affected_areas invalid");
+  const bugType = p.bug_type || p.category;
+  if (!bugType || !(CATEGORY_IDS as readonly string[]).includes(bugType)) errs.push("bug_type invalid");
   if (!nonEmpty(p.actual_behavior)) errs.push("actual_behavior is required");
-  if (!(CATEGORY_IDS as readonly string[]).includes(p.category)) errs.push("category invalid");
+  if (!nonEmpty(p.expected_behavior)) errs.push("expected_behavior is required");
+  if (!nonEmpty(p.reproduction_steps)) errs.push("reproduction_steps is required");
+  if (!p.frequency) errs.push("frequency is required");
+  if (p.category && !(CATEGORY_IDS as readonly string[]).includes(p.category)) errs.push("category invalid");
   if (!(SEVERITY_IDS as readonly string[]).includes(p.severity)) errs.push("severity invalid");
+  if (p.frequency && !(FREQUENCIES.map((f) => f.id) as readonly string[]).includes(p.frequency)) errs.push("frequency invalid");
   if (p.title && p.title.length > MAX_TITLE_LEN) errs.push("title too long");
   for (const k of ["actual_behavior", "expected_behavior", "reproduction_steps", "notes"] as const) {
     const v = p[k];
@@ -1032,6 +1079,11 @@ function validatePayload(p: SubmitPayload): string[] {
   }
   if ((p.attachments?.length ?? 0) > MAX_ATTACHMENTS) errs.push("too many attachments");
   return errs;
+}
+
+function deriveBugTitle(p: SubmitPayload): string {
+  const basis = (p.actual_behavior || p.expected_behavior || "Bug report").trim().replace(/\s+/g, " ");
+  return basis.length > MAX_TITLE_LEN ? basis.slice(0, MAX_TITLE_LEN - 1) + "…" : basis;
 }
 
 function nonEmpty(s: unknown): boolean {

@@ -29,10 +29,10 @@ export async function insertBug(env: Env, input: NewBugInput, publicNumber: numb
     `INSERT INTO bugs (
        public_number, reporter_tg_id, reporter_username, reporter_display_name,
        app, app_version, app_build, device, os,
-       category, severity, title, actual_behavior, expected_behavior,
+       category, bug_type, feature, affected_areas, severity, title, actual_behavior, expected_behavior,
        reproduction_steps, frequency, notes,
        status, created_at, updated_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?)
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?)
      RETURNING *`,
   ).bind(
     publicNumber,
@@ -45,6 +45,9 @@ export async function insertBug(env: Env, input: NewBugInput, publicNumber: numb
     input.device ?? null,
     input.os ?? null,
     input.category,
+    input.bug_type ?? input.category,
+    input.feature ?? null,
+    input.affected_areas ?? null,
     input.severity,
     input.title,
     input.actual_behavior,
@@ -248,6 +251,14 @@ export interface GitHubMetaPatch {
   github_repo?: string | null;
   github_issue_number?: number | null;
   github_issue_url?: string | null;
+  github_issue_id?: number | null;
+  github_issue_node_id?: string | null;
+  github_sub_issue_number?: number | null;
+  github_sub_issue_id?: number | null;
+  github_sub_issue_node_id?: string | null;
+  github_sub_issue_url?: string | null;
+  github_parent_issue_number?: number | null;
+  github_parent_issue_url?: string | null;
   github_status?: string | null;
   github_error?: string | null;
   github_created_at?: number | null;

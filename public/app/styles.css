@@ -187,7 +187,8 @@ fieldset.check-options {
   padding: 0;
   margin: 0 0 14px;
 }
-fieldset.check-options legend {
+fieldset.check-options legend,
+fieldset.severity-options legend {
   color: var(--subtext);
   font-size: 13px;
   font-weight: 700;
@@ -222,6 +223,61 @@ fieldset.check-options legend {
   background: rgba(98, 70, 147, 0.24);
 }
 @media (max-width: 420px) { .check-grid { grid-template-columns: 1fr; } }
+
+.severity-options {
+  border: 0;
+  padding: 0;
+  margin: 0 0 8px;
+}
+.severity-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+.severity-tile {
+  position: relative;
+  display: flex;
+  min-height: 74px;
+  margin: 0;
+  padding: 10px 8px;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 4px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 12px;
+  background: rgba(0,0,0,0.35);
+  color: var(--text);
+  text-align: center;
+  cursor: pointer;
+}
+.severity-tile input {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+.severity-number {
+  font-size: 22px;
+  font-weight: 900;
+  line-height: 1;
+}
+.severity-name {
+  font-size: 11px;
+  font-weight: 900;
+  color: var(--subtext);
+  line-height: 1.15;
+}
+.severity-tile:has(input:checked) {
+  border-color: var(--accent);
+  background: rgba(98, 70, 147, 0.28);
+  box-shadow: inset 0 0 0 1px rgba(165,138,217,0.22);
+}
+.severity-tile:has(input:checked) .severity-name {
+  color: var(--text);
+}
+@media (max-width: 420px) {
+  .severity-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
 
 .steps-field { margin: 0 0 14px; }
 .steps-label { color: var(--subtext); font-size: 13px; font-weight: 700; margin-bottom: 6px; }
@@ -694,6 +750,9 @@ img.nav-glyph { content: ""; }
 .callbacks-grid { grid-template-columns: 1fr; }
 .callbacks-grid > div:first-child { grid-column: 1 / -1; }
 .callback-editor-card { display: grid; gap: 12px; }
+.callback-message-field > label {
+  margin-bottom: 6px;
+}
 .callback-toggle-row {
   display: grid;
   grid-template-columns: 1fr;
@@ -703,6 +762,7 @@ img.nav-glyph { content: ""; }
   display: flex;
   align-items: center;
   gap: 10px;
+  min-height: 46px;
   margin: 0;
   padding: 12px;
   border-radius: 12px;
@@ -710,11 +770,151 @@ img.nav-glyph { content: ""; }
   background: rgba(0,0,0,.22);
   color: var(--text);
   font-weight: 800;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-user-select: none;
+  user-select: none;
 }
 .callback-check input {
+  display: inline-block;
+  flex: 0 0 auto;
   width: 18px;
   height: 18px;
+  margin: 0;
   accent-color: var(--accent);
+  pointer-events: auto;
+  appearance: auto;
+  -webkit-appearance: checkbox;
+}
+.tg-editor-shell {
+  display: grid;
+  gap: 8px;
+}
+.tg-editor-toolbar {
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(0,0,0,.22);
+  -webkit-overflow-scrolling: touch;
+}
+.tg-editor-toolbar::-webkit-scrollbar { display: none; }
+.tg-editor-tool,
+.tg-editor-link-panel button {
+  flex: 0 0 auto;
+  width: auto;
+  min-height: 34px;
+  margin: 0;
+  padding: 7px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(200,180,240,.13);
+  background: rgba(255,255,255,.05);
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 900;
+  line-height: 1;
+  box-shadow: none;
+}
+.tg-editor-tool.active {
+  border-color: rgba(165,138,217,.65);
+  background: rgba(98,70,147,.55);
+}
+.tg-editor-link-panel {
+  display: grid;
+  grid-template-columns: 1fr auto auto auto;
+  gap: 6px;
+  align-items: center;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: rgba(0,0,0,.24);
+}
+.tg-editor-link-panel input {
+  margin: 0;
+  min-width: 0;
+}
+.tg-editor-surface {
+  min-height: 112px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 1.5px solid var(--border-strong);
+  border-radius: 12px;
+  background: rgba(0,0,0,.35);
+  color: var(--text);
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.45;
+  outline: none;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+  -webkit-user-select: text;
+  user-select: text;
+}
+.tg-editor-surface:focus {
+  border-color: var(--accent);
+  background: rgba(0,0,0,.5);
+}
+.tg-editor-surface.is-empty::before {
+  content: attr(data-placeholder);
+  color: var(--hint);
+  pointer-events: none;
+}
+.tg-editor-surface code {
+  padding: 1px 4px;
+  border-radius: 6px;
+  background: rgba(165,138,217,.14);
+  color: #f4dcff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: .92em;
+}
+.tg-editor-surface pre {
+  display: block;
+  margin: 8px 0;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(0,0,0,.42);
+  border: 1px solid var(--border);
+  color: #f4dcff;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre-wrap;
+}
+.tg-editor-surface blockquote {
+  margin: 8px 0;
+  padding: 8px 10px;
+  border-left: 3px solid var(--accent);
+  border-radius: 8px;
+  background: rgba(98,70,147,.16);
+}
+.tg-editor-surface blockquote[data-expandable] {
+  border-left-color: var(--link);
+  background: linear-gradient(180deg, rgba(98,70,147,.24), rgba(90,46,80,.18));
+}
+.tg-editor-surface blockquote[data-expandable]::after {
+  content: "Expandable";
+  display: block;
+  margin-top: 6px;
+  color: var(--subtext);
+  font-size: 11px;
+  font-weight: 900;
+  text-transform: uppercase;
+  letter-spacing: .08em;
+}
+.tg-editor-spoiler {
+  border-radius: 5px;
+  background: rgba(242,238,249,.24);
+  color: transparent;
+  text-shadow: 0 0 7px rgba(242,238,249,.65);
+}
+.tg-editor-surface a {
+  color: var(--link);
+  text-decoration: underline;
+}
+@media (max-width: 420px) {
+  .tg-editor-link-panel {
+    grid-template-columns: 1fr;
+  }
 }
 .callback-interactions {
   list-style: none;

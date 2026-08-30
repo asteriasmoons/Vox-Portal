@@ -5,9 +5,17 @@ import { INIT_DATA } from "./tg";
 const H_INIT = "x-telegram-init-data";
 
 export interface ConfigOption { id: string; label: string; hint?: string }
+export interface BugAppConfig {
+  id: string;
+  display_name: string;
+  parent_github_issue_number: number | null;
+  features: ConfigOption[];
+  affected_areas: ConfigOption[];
+}
 export interface ConfigResponse {
   ok: true;
   apps: string[];
+  bug_apps: BugAppConfig[];
   categories: ConfigOption[];
   severities: ConfigOption[];
   frequencies: ConfigOption[];
@@ -32,8 +40,11 @@ export interface SubmitPayload {
   device?: string;
   os?: string;
   category: string;
+  bug_type: string;
+  feature: string;
+  affected_areas: string[];
   severity: string;
-  title: string;
+  title?: string;
   actual_behavior: string;
   expected_behavior?: string;
   reproduction_steps?: string;

@@ -15,6 +15,9 @@ CREATE TABLE IF NOT EXISTS bugs (
   device                TEXT,
   os                    TEXT,
   category              TEXT NOT NULL,
+  bug_type              TEXT,
+  feature               TEXT,
+  affected_areas        TEXT,
   severity              TEXT NOT NULL,
   title                 TEXT NOT NULL,
   actual_behavior       TEXT NOT NULL,
@@ -39,6 +42,14 @@ CREATE TABLE IF NOT EXISTS bugs (
   github_repo           TEXT,
   github_issue_number   INTEGER,
   github_issue_url      TEXT,
+  github_issue_id       INTEGER,
+  github_issue_node_id  TEXT,
+  github_sub_issue_number  INTEGER,
+  github_sub_issue_id      INTEGER,
+  github_sub_issue_node_id TEXT,
+  github_sub_issue_url     TEXT,
+  github_parent_issue_number INTEGER,
+  github_parent_issue_url    TEXT,
   github_status         TEXT,
   github_error          TEXT,
   github_created_at     INTEGER,
@@ -53,6 +64,7 @@ CREATE TABLE IF NOT EXISTS bugs (
   updated_at            INTEGER NOT NULL DEFAULT (unixepoch())
 );
 CREATE INDEX IF NOT EXISTS idx_bugs_github_issue ON bugs(github_issue_number);
+CREATE INDEX IF NOT EXISTS idx_bugs_github_sub_issue ON bugs(github_sub_issue_number);
 
 -- One row per logical GitHub management action that has been synced.
 -- action_key is `<bug_id>:<verb>[:<version>]`; UNIQUE prevents retry / replay

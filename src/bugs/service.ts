@@ -177,12 +177,12 @@ async function postGitHubCrossReference(
 export async function postGitHubIssuePreviewToThread(
   env: Env,
   row: BugRow,
-  url = row.github_issue_url,
+  url = row.github_sub_issue_url ?? row.github_issue_url,
 ): Promise<void> {
   if (!url || !row.discussion_thread_id) return;
   const replyToMessageId = row.report_message_id ?? row.discussion_message_id ?? row.discussion_thread_id;
   try {
-    await sendMessage(env, discussionChatId(env), `GitHub Issue\n${esc(url)}`, {
+    await sendMessage(env, discussionChatId(env), `<b>GitHub Issue</b>\n${esc(url)}`, {
       parse_mode: "HTML",
       message_thread_id: row.discussion_thread_id,
       reply_parameters: { message_id: replyToMessageId },
@@ -345,7 +345,7 @@ export async function resendBugToTelegram(
   try {
     await createIssueForBug(env, row.id);
     const fresh = await getBug(env, row.id);
-    if (fresh?.github_issue_url) await postGitHubIssuePreviewToThread(env, fresh);
+    if (fresh?.github_sub_issue_url || fresh?.github_issue_url) await postGitHubIssuePreviewToThread(env, fresh);
   } catch (e) {
     log.warn("resend_github_retry_failed", { bugId, err: String(e) });
   }

@@ -54,9 +54,15 @@
                 <option value="channel">Channel</option>
               </select>
             </label>
-            <label>Message
-              <textarea id="callback-followup-message" rows="4" placeholder="Message sent automatically after this callback is tapped."></textarea>
-            </label>
+            <div class="callback-message-field">
+              <label id="callback-followup-message-label">Message</label>
+              <div
+                id="callback-followup-message"
+                class="tg-message-editor"
+                aria-labelledby="callback-followup-message-label"
+                data-placeholder="Message sent automatically after this callback is tapped."
+              ></div>
+            </div>
             <div class="callback-toggle-row">
               <label class="callback-check"><input id="callback-followup-enabled" type="checkbox" /> Follow-up enabled</label>
               <label class="callback-check"><input id="callback-active" type="checkbox" /> Callback active</label>
@@ -77,9 +83,15 @@
             <label id="callback-recipient-label">Recipient
               <select id="callback-manual-recipient"></select>
             </label>
-            <label>Message
-              <textarea id="callback-manual-message" rows="4" placeholder="Send a regular update using the saved callback context."></textarea>
-            </label>
+            <div class="callback-message-field">
+              <label id="callback-manual-message-label">Message</label>
+              <div
+                id="callback-manual-message"
+                class="tg-message-editor"
+                aria-labelledby="callback-manual-message-label"
+                data-placeholder="Send a regular update using the saved callback context."
+              ></div>
+            </div>
             <button id="callback-send" class="primary" type="button">Send Update</button>
             <p id="callback-send-feedback" class="hint resubmit-feedback"></p>
           </section>

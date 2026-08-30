@@ -21,6 +21,8 @@ import { resolveRepo, derivedLabelsFor, type GitHubRepo } from "./repos";
 import { getBug, listAttachments, saveGitHubMeta, claimGitHubActionKey } from "../db/queries";
 import { log } from "../util/log";
 import { publicIdOf } from "../bugs/formatting";
+import { bugAffectedAreaLabels, bugAppMetadata, bugOptionLabel } from "../bugs/app-metadata";
+import { categoryMeta, frequencyMeta, severityMeta, statusMeta } from "../bugs/constants";
 
 const GH_API = "https://api.github.com";
 const UA = "vox-bugs-bot";
@@ -39,14 +41,49 @@ export async function createIssueForBug(env: Env, bugId: number): Promise<GitHub
     const bug = await getBug(env, bugId);
     if (!bug) return { ok: false, error: "bug_not_found" };
 
-    // Idempotency: an existing issue on this row wins. Never create a
-    // second issue for the same logical report.
-    if (bug.github_issue_number && bug.github_issue_url && bug.github_repo) {
+    // Idempotency: an existing sub-issue on this row wins. Never create a
+    // second issue for the same logical report. Legacy rows may have
+    // github_issue_number without github_sub_issue_number; those remain
+    // safely untouched and are not treated as sub-issue-backed reports.
+    if (bug.github_sub_issue_number && bug.github_sub_issue_url && bug.github_repo) {
       log.info("github_issue_already_exists", {
         bugId,
-        number: bug.github_issue_number,
+        number: bug.github_sub_issue_number,
         repo: bug.github_repo,
       });
+      return {
+        ok: true,
+        skipped: "already_exists",
+        number: bug.github_sub_issue_number,
+        url: bug.github_sub_issue_url,
+        repo: bug.github_repo,
+      };
+    }
+    const appMeta = bugAppMetadata(bug.app);
+    if (bug.github_issue_id && bug.github_issue_number && bug.github_issue_url && bug.github_repo && !bug.github_sub_issue_number && appMeta?.parent_github_issue_number) {
+      const [owner, repoNameOnly] = bug.github_repo.split("/");
+      if (!owner || !repoNameOnly) return { ok: false, skipped: "no_mapping", reason: "Malformed GitHub repo metadata" };
+      const attach = await attachSubIssue(env, { owner, repo: repoNameOnly }, appMeta.parent_github_issue_number, bug.github_issue_id);
+      if (!attach.ok) {
+        await saveGitHubMeta(env, bugId, {
+          github_status: "failed",
+          github_error: `Sub-issue attach HTTP ${attach.status}: ${attach.body.slice(0, 160)}`,
+        });
+        return { ok: false, error: `Sub-issue attach HTTP ${attach.status}`, status: attach.status };
+      }
+      await saveGitHubMeta(env, bugId, {
+        github_sub_issue_number: bug.github_issue_number,
+        github_sub_issue_id: bug.github_issue_id,
+        github_sub_issue_node_id: bug.github_issue_node_id,
+        github_sub_issue_url: bug.github_issue_url,
+        github_parent_issue_number: appMeta.parent_github_issue_number,
+        github_parent_issue_url: `https://github.com/${owner}/${repoNameOnly}/issues/${appMeta.parent_github_issue_number}`,
+        github_status: "created",
+        github_error: null,
+      });
+      return { ok: true, number: bug.github_issue_number, url: bug.github_issue_url, repo: bug.github_repo };
+    }
+    if (bug.github_issue_number && bug.github_issue_url && bug.github_repo && !bug.github_sub_issue_number) {
       return {
         ok: true,
         skipped: "already_exists",
@@ -70,6 +107,15 @@ export async function createIssueForBug(env: Env, bugId: number): Promise<GitHub
     if (!repo) {
       const reason = `No GitHub repository configured for "${bug.app}"`;
       log.info("github_no_mapping", { bugId, app: bug.app });
+      await saveGitHubMeta(env, bugId, {
+        github_status: "skipped_no_mapping",
+        github_error: reason,
+      });
+      return { ok: false, skipped: "no_mapping", reason };
+    }
+    if (!appMeta?.parent_github_issue_number) {
+      const reason = `No GitHub parent bug issue configured for "${bug.app}"`;
+      log.info("github_no_parent_issue", { bugId, app: bug.app });
       await saveGitHubMeta(env, bugId, {
         github_status: "skipped_no_mapping",
         github_error: reason,
@@ -104,9 +150,31 @@ export async function createIssueForBug(env: Env, bugId: number): Promise<GitHub
       return { ok: false, error: `HTTP ${create.status}`, status: create.status };
     }
 
-    const issue = (await create.json()) as { number: number; html_url: string; id: number };
+    const issue = (await create.json()) as { number: number; html_url: string; id: number; node_id: string };
     const repoName = `${repo.owner}/${repo.repo}`;
     log.info("github_issue_created", { bugId, number: issue.number, repo: repoName });
+
+    const attach = await attachSubIssue(env, repo, appMeta.parent_github_issue_number, issue.id);
+    if (!attach.ok) {
+      log.error("github_sub_issue_attach_failed", null, {
+        bugId,
+        status: attach.status,
+        parent: appMeta.parent_github_issue_number,
+        childIssueId: issue.id,
+        body: attach.body.slice(0, 500),
+      });
+      await saveGitHubMeta(env, bugId, {
+        github_repo: repoName,
+        github_issue_number: issue.number,
+        github_issue_url: issue.html_url,
+        github_issue_id: issue.id,
+        github_issue_node_id: issue.node_id,
+        github_status: "failed",
+        github_error: `Sub-issue attach HTTP ${attach.status}: ${attach.body.slice(0, 160)}`,
+        github_created_at: Math.floor(Date.now() / 1000),
+      });
+      return { ok: false, error: `Sub-issue attach HTTP ${attach.status}`, status: attach.status };
+    }
 
     // Labels — best-effort. Isolated so a label failure doesn't affect
     // the recorded outcome. We deliberately await it here (rather than
@@ -120,6 +188,14 @@ export async function createIssueForBug(env: Env, bugId: number): Promise<GitHub
       github_repo: repoName,
       github_issue_number: issue.number,
       github_issue_url: issue.html_url,
+      github_issue_id: issue.id,
+      github_issue_node_id: issue.node_id,
+      github_sub_issue_number: issue.number,
+      github_sub_issue_id: issue.id,
+      github_sub_issue_node_id: issue.node_id,
+      github_sub_issue_url: issue.html_url,
+      github_parent_issue_number: appMeta.parent_github_issue_number,
+      github_parent_issue_url: `https://github.com/${repo.owner}/${repo.repo}/issues/${appMeta.parent_github_issue_number}`,
       github_status: "created",
       github_error: null,
       github_created_at: Math.floor(Date.now() / 1000),
@@ -141,89 +217,115 @@ export async function createIssueForBug(env: Env, bugId: number): Promise<GitHub
 
 // ── Title / body builders ──────────────────────────────
 export function buildTitle(bug: BugRow): string {
-  const t = bug.title.trim();
-  return `[Bug] ${t}`;
+  const summary = (bug.title || bug.actual_behavior || "Bug report").replace(/\s+/g, " ").trim();
+  return `${publicIdOf(bug)}: ${summary.slice(0, 140)}`;
 }
 
 export function buildBody(bug: BugRow, attachments: AttachmentRow[]): string {
   const parts: string[] = [];
-  const push = (heading: string, body: string | null | undefined) => {
-    const v = (body ?? "").trim();
-    if (!v) return;
-    parts.push(`## ${heading}\n\n${v}`);
-  };
-  const kv = (label: string, v: string | null | undefined) => {
-    const val = (v ?? "").trim();
-    return val ? `- **${label}:** ${val}` : "";
-  };
+  const bugType = categoryMeta(bug.bug_type ?? bug.category).label;
+  const feature = bugOptionLabel(bug.app, "feature", bug.feature) || "Not provided";
+  const areas = bugAffectedAreaLabels(bug.app, bug.affected_areas);
+  const steps = extractSteps(bug.reproduction_steps);
 
-  parts.push(`> **${publicIdOf(bug)}** — filed via Vox Bugs Bot`);
+  parts.push(`# ${publicIdOf(bug)}`);
+  parts.push(`> Filed through Vox Portal for ${escapeMd(bug.app)}.`);
 
-  push("Bug Description", bug.actual_behavior);
-  push("Expected Behavior", bug.expected_behavior);
+  parts.push(`## Device Details\n\n${markdownTable(["Detail", "Value"], [
+    ["App", bug.app],
+    ["Version", bug.app_version || "Not provided"],
+    ["Build", bug.app_build || "Not provided"],
+    ["Device", bug.device || "Not provided"],
+    ["OS", bug.os || "Not provided"],
+  ])}`);
 
-  const steps = formatReproSteps(bug.reproduction_steps);
-  if (steps) parts.push(`## Steps to Reproduce\n\n${steps}`);
+  const context = markdownTable(["Detail", "Value"], [
+    ["Bug Type", bugType],
+    ["Severity", severityMeta(bug.severity).label],
+    ["Reproducibility", bug.frequency ? frequencyMeta(bug.frequency)?.label ?? bug.frequency : "Not specified"],
+    ["Feature", feature],
+    ["Affected Areas", areas.length ? "See checked affected areas below" : "None selected"],
+  ]);
+  const checkedAreas = areas.map((area) => `- [x] ${escapeMd(area)}`).join("\n");
+  parts.push(`## Context Details\n\n${context}${checkedAreas ? `\n\n${checkedAreas}` : ""}`);
 
-  const meta = [
-    kv("Severity", bug.severity),
-    kv("Category", bug.category),
-    kv("Frequency", bug.frequency),
-  ].filter(Boolean).join("\n");
-  if (meta) parts.push(`## Classification\n\n${meta}`);
+  if (steps.length) {
+    parts.push(`## Steps to Reproduce\n\n${markdownTable(["Step", "Action"], steps.map((step, i) => [String(i + 1), step]))}`);
+  }
 
-  const envInfo = [
-    kv("App", bug.app),
-    kv("Version", bug.app_version),
-    kv("Build", bug.app_build),
-    kv("Device", bug.device),
-    kv("OS", bug.os),
-  ].filter(Boolean).join("\n");
-  if (envInfo) parts.push(`## Environment\n\n${envInfo}`);
+  parts.push(`## Behavior Details\n\n${markdownTable(["Behavior", "Details"], [
+    ["Expected", bug.expected_behavior || "Not provided"],
+    ["Actual", bug.actual_behavior],
+  ])}`);
 
-  push("Additional Notes", bug.notes);
+  if (bug.notes) parts.push(`## Additional Notes\n\n${escapeMd(bug.notes)}`);
 
-  const reporter = bug.reporter_username
-    ? `- Telegram: @${bug.reporter_username}`
-    : bug.reporter_display_name
-      ? `- Telegram: ${bug.reporter_display_name}`
-      : "";
-  if (reporter) parts.push(`## Reporter\n\n${reporter}`);
-
-  // Attachments block. Telegram file_id values are NOT public URLs and
-  // would give broken links in GitHub, so we do not embed them here.
-  // The Telegram thread remains the canonical place for the raw media.
   if (attachments.length) {
     const lines: string[] = [];
     for (const a of attachments) {
       const name = a.file_name || a.r2_key || `${a.kind}-${a.id}`;
-      lines.push(`- ${name}${a.mime_type ? ` (${a.mime_type})` : ""}`);
+      lines.push(`- ${escapeMd(name)}${a.mime_type ? ` (${escapeMd(a.mime_type)})` : ""}`);
     }
     parts.push(
-      `## Attachments\n\n${lines.join("\n")}\n\n_See the linked Telegram thread for the full media._`,
+      `## Screenshots & Recordings\n\n${lines.join("\n")}\n\n_See the linked Telegram comment thread for the full media._`,
     );
+  } else {
+    parts.push("## Screenshots & Recordings\n\nNone submitted.");
   }
 
-  return parts.join("\n\n");
+  const reporter = bug.reporter_username
+    ? `@${bug.reporter_username}`
+    : bug.reporter_display_name || "anonymous";
+  parts.push(`---\n\nSubmitted through the Voxiverse Telegram Mini App — ${publicIdOf(bug)}\n\nReporter: ${escapeMd(reporter)}`);
+
+  return parts.join("\n\n---\n\n");
 }
 
-function formatReproSteps(input: string | null): string {
-  if (!input) return "";
+function extractSteps(input: string | null): string[] {
+  if (!input) return [];
   const raw = input.replace(/\r/g, "").trim();
-  if (!raw) return "";
+  if (!raw) return [];
   const lines = raw.split("\n").map((l) => l.trim()).filter(Boolean);
   const numbered = lines.every((l) => /^\d+[.)]/.test(l));
-  if (numbered) {
-    return lines
-      .map((l) => l.replace(/^\d+[.)]\s*/, ""))
-      .map((s, i) => `${i + 1}. ${s}`)
-      .join("\n");
-  }
-  if (lines.length > 1) return lines.map((s, i) => `${i + 1}. ${s}`).join("\n");
-  return raw;
+  if (numbered) return lines.map((l) => l.replace(/^\d+[.)]\s*/, ""));
+  if (lines.length > 1) return lines;
+  return [raw];
+}
+
+function markdownTable(headers: [string, string], rows: [string, string][]): string {
+  const head = `| ${headers.map(escapeTableCell).join(" | ")} |`;
+  const sep = `| ${headers.map(() => "---").join(" | ")} |`;
+  const body = rows.map((row) => `| ${row.map(escapeTableCell).join(" | ")} |`);
+  return [head, sep, ...body].join("\n");
+}
+
+function escapeTableCell(value: string): string {
+  return escapeMd(value).replace(/\r?\n/g, "<br>").replace(/\|/g, "\\|");
+}
+
+function escapeMd(value: string): string {
+  return String(value)
+    .replace(/\\/g, "\\\\")
+    .replace(/\|/g, "\\|")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 // ── Labels ──────────────────────────────────────────────
+async function attachSubIssue(
+  env: Env,
+  repo: GitHubRepo,
+  parentIssueNumber: number,
+  childIssueId: number,
+): Promise<{ ok: true } | { ok: false; status: number; body: string }> {
+  const res = await ghFetch(env, `${GH_API}/repos/${repo.owner}/${repo.repo}/issues/${parentIssueNumber}/sub_issues`, {
+    method: "POST",
+    body: JSON.stringify({ sub_issue_id: childIssueId }),
+  });
+  if (res.ok) return { ok: true };
+  return { ok: false, status: res.status, body: await res.text() };
+}
+
 async function tryAddLabels(env: Env, repo: GitHubRepo, issueNumber: number, bug: BugRow): Promise<void> {
   const wanted = [
     ...(repo.labels ?? []),
@@ -248,7 +350,7 @@ async function tryAddLabels(env: Env, repo: GitHubRepo, issueNumber: number, bug
 export type SyncResult = { ok: true } | { ok: false; skipped: string } | { ok: false; error: string };
 
 function repoOf(bug: BugRow): { owner: string; repo: string } | null {
-  if (!bug.github_repo || !bug.github_issue_number) return null;
+  if (!bug.github_repo || !bug.github_sub_issue_number) return null;
   const [owner, repo] = bug.github_repo.split("/");
   if (!owner || !repo) return null;
   return { owner, repo };
@@ -259,7 +361,7 @@ export async function postIssueComment(env: Env, bug: BugRow, body: string): Pro
   if (!r) return { ok: false, skipped: "no_issue" };
   if (!env.GITHUB_TOKEN) return { ok: false, skipped: "disabled" };
   try {
-    const res = await ghFetch(env, `${GH_API}/repos/${r.owner}/${r.repo}/issues/${bug.github_issue_number}/comments`, {
+    const res = await ghFetch(env, `${GH_API}/repos/${r.owner}/${r.repo}/issues/${bug.github_sub_issue_number}/comments`, {
       method: "POST",
       body: JSON.stringify({ body }),
     });
@@ -280,7 +382,7 @@ async function setIssueState(env: Env, bug: BugRow, state: "open" | "closed", st
   if (!r) return { ok: false, skipped: "no_issue" };
   if (!env.GITHUB_TOKEN) return { ok: false, skipped: "disabled" };
   try {
-    const res = await ghFetch(env, `${GH_API}/repos/${r.owner}/${r.repo}/issues/${bug.github_issue_number}`, {
+    const res = await ghFetch(env, `${GH_API}/repos/${r.owner}/${r.repo}/issues/${bug.github_sub_issue_number}`, {
       method: "PATCH",
       body: JSON.stringify(state_reason ? { state, state_reason } : { state }),
     });
@@ -400,7 +502,7 @@ async function ghFetch(env: Env, url: string, init: RequestInit): Promise<Respon
     headers: {
       Authorization: `Bearer ${env.GITHUB_TOKEN}`,
       Accept: "application/vnd.github+json",
-      "X-GitHub-Api-Version": "2022-11-28",
+      "X-GitHub-Api-Version": "2026-03-10",
       "User-Agent": UA,
       "content-type": "application/json",
       ...(init.headers ?? {}),

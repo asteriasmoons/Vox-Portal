@@ -18,6 +18,9 @@ export interface BugRow {
   device: string | null;
   os: string | null;
   category: CategoryId;
+  bug_type: CategoryId | null;
+  feature: string | null;
+  affected_areas: string | null;
   severity: SeverityId;
   title: string;
   actual_behavior: string;
@@ -35,6 +38,14 @@ export interface BugRow {
   github_repo: string | null;
   github_issue_number: number | null;
   github_issue_url: string | null;
+  github_issue_id: number | null;
+  github_issue_node_id: string | null;
+  github_sub_issue_number: number | null;
+  github_sub_issue_id: number | null;
+  github_sub_issue_node_id: string | null;
+  github_sub_issue_url: string | null;
+  github_parent_issue_number: number | null;
+  github_parent_issue_url: string | null;
   github_status: string | null;
   github_error: string | null;
   github_created_at: number | null;
@@ -222,6 +233,9 @@ export interface NewBugInput {
   device?: string | null;
   os?: string | null;
   category: CategoryId;
+  bug_type?: CategoryId | null;
+  feature?: string | null;
+  affected_areas?: string | null;
   severity: SeverityId;
   title: string;
   actual_behavior: string;

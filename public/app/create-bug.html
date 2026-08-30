@@ -26,64 +26,95 @@
               <option value="">Choose an app…</option>
             </select>
           </label>
-          <div class="row two">
-            <label>Version
-              <input name="app_version" autocomplete="off" placeholder="1.2.0" />
-            </label>
-            <label>Build
-              <input name="app_build" autocomplete="off" placeholder="142" />
-            </label>
-          </div>
-          <div class="row two">
-            <label>Device
-              <input name="device" autocomplete="off" placeholder="iPhone 16 Pro" />
-            </label>
-            <label>OS
-              <input name="os" autocomplete="off" placeholder="iOS 26.6" />
-            </label>
-          </div>
         </section>
 
         <section class="card">
-          <h2>Classification</h2>
-          <label>Category <span class="req">*</span>
-            <select name="category" required id="category-select"></select>
+          <h2>Bug Type</h2>
+          <label>Bug Type <span class="req">*</span>
+            <select name="bug_type" required id="category-select"></select>
             <small class="hint" id="category-hint"></small>
           </label>
-          <label>Severity <span class="req">*</span>
-            <select name="severity" required id="severity-select"></select>
-            <small class="hint" id="severity-hint"></small>
+          <input type="hidden" name="category" id="category-hidden" />
+        </section>
+
+        <section class="card">
+          <h2>Device Information</h2>
+          <div class="row two">
+            <label>Version <span class="req">*</span>
+              <input name="app_version" required autocomplete="off" placeholder="1.2.0" />
+            </label>
+            <label>Build <span class="req">*</span>
+              <input name="app_build" required autocomplete="off" placeholder="142" />
+            </label>
+          </div>
+          <div class="row two">
+            <label>Device <span class="req">*</span>
+              <input name="device" required autocomplete="off" placeholder="iPhone 16 Pro" />
+            </label>
+            <label>OS <span class="req">*</span>
+              <input name="os" required autocomplete="off" placeholder="iOS 26.6" />
+            </label>
+          </div>
+        </section>
+
+        <section class="card">
+          <h2>Feature</h2>
+          <label>Feature <span class="req">*</span>
+            <select name="feature" required id="feature-select">
+              <option value="">Choose an app first…</option>
+            </select>
+            <small class="hint" id="feature-hint"></small>
           </label>
         </section>
 
         <section class="card">
-          <h2>What went wrong?</h2>
-          <label>Short title <span class="req">*</span>
-            <input name="title" required maxlength="200" placeholder="One line describing the bug" />
-          </label>
-          <label>What happened? <span class="req">*</span>
-            <textarea name="actual_behavior" required rows="4" placeholder="Describe what you saw."></textarea>
-          </label>
-          <label>What did you expect to happen?
-            <textarea name="expected_behavior" rows="3" placeholder="What should have happened instead?"></textarea>
-          </label>
+          <h2>Affected Areas</h2>
+          <fieldset class="check-options">
+            <legend>Affected Areas <span class="req">*</span></legend>
+            <div id="affected-areas" class="check-grid"></div>
+          </fieldset>
+        </section>
+
+        <section class="card">
+          <h2>Severity</h2>
+          <fieldset class="severity-options">
+            <legend>Severity <span class="req">*</span></legend>
+            <div id="severity-tiles" class="severity-grid"></div>
+          </fieldset>
+          <input type="hidden" name="severity" id="severity-select" />
+          <small class="hint" id="severity-hint"></small>
+        </section>
+
+        <section class="card">
+          <h2>Steps to Reproduce</h2>
           <div class="steps-field">
-            <div class="steps-label">Steps to reproduce</div>
+            <div class="steps-label">Steps to Reproduce <span class="req">*</span></div>
             <div id="steps-list" class="steps-list"></div>
             <input type="hidden" name="reproduction_steps" id="reproduction-steps" />
           </div>
-          <label>Does it happen every time?
-            <select name="frequency" id="frequency-select">
-              <option value="">Not specified</option>
+          <label>Reproducibility <span class="req">*</span>
+            <select name="frequency" required id="frequency-select">
+              <option value="">Choose reproducibility…</option>
             </select>
-          </label>
-          <label>Additional notes
-            <textarea name="notes" rows="3" placeholder="Anything else we should know?"></textarea>
           </label>
         </section>
 
         <section class="card">
-          <h2>Attachments</h2>
+          <h2>Expected Behavior</h2>
+          <label>Expected Behavior <span class="req">*</span>
+            <textarea name="expected_behavior" required rows="3" placeholder="What should have happened instead?"></textarea>
+          </label>
+        </section>
+
+        <section class="card">
+          <h2>Actual Behavior</h2>
+          <label>Actual Behavior <span class="req">*</span>
+            <textarea name="actual_behavior" required rows="4" placeholder="Describe what you saw."></textarea>
+          </label>
+        </section>
+
+        <section class="card">
+          <h2>Screenshots & Recordings</h2>
           <p class="hint">Screenshots, screen recordings, or files. Up to 10, 20 MB each.</p>
           <label class="filepick">
             <input type="file" id="file-input" multiple accept="image/*,video/*,.pdf,.txt,.log,.json,.zip" />

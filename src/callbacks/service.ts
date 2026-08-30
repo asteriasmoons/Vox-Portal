@@ -29,6 +29,8 @@ export interface CallbackRecord {
   source_thread_id: number | null;
   followup_destination: CallbackDestination;
   followup_message: string;
+  followup_message_html: string | null;
+  followup_message_doc: string | null;
   followup_enabled: number;
   active: number;
   tap_count: number;
@@ -52,6 +54,8 @@ export interface CallbackInteraction {
   source_thread_id: number | null;
   response_destination: ManualCallbackDestination | null;
   response_message: string | null;
+  response_message_html: string | null;
+  response_message_doc: string | null;
   response_chat_id: number | null;
   response_message_id: number | null;
   delivery_status: string;
@@ -149,6 +153,8 @@ export async function listCallbackRecords(env: Env): Promise<CallbackRecord[]> {
        r.source_thread_id,
        r.followup_destination,
        r.followup_message,
+       r.followup_message_html,
+       r.followup_message_doc,
        r.followup_enabled,
        r.active,
        (
@@ -264,6 +270,8 @@ export async function getCallbackRecord(env: Env, id: number): Promise<CallbackR
        r.source_thread_id,
        r.followup_destination,
        r.followup_message,
+       r.followup_message_html,
+       r.followup_message_doc,
        r.followup_enabled,
        r.active,
        (
@@ -321,6 +329,8 @@ export async function updateCallbackConfig(
   input: {
     followup_destination?: CallbackDestination;
     followup_message?: string;
+    followup_message_html?: string | null;
+    followup_message_doc?: string | null;
     followup_enabled?: boolean;
     active?: boolean;
   },
@@ -333,13 +343,29 @@ export async function updateCallbackConfig(
   const message = typeof input.followup_message === "string"
     ? input.followup_message.slice(0, 3900)
     : record.followup_message;
+  const messageHtml = typeof input.followup_message_html === "string"
+    ? input.followup_message_html.slice(0, 3900)
+    : input.followup_message_html === null
+    ? null
+    : record.followup_message_html;
+  const messageDoc = typeof input.followup_message_doc === "string"
+    ? input.followup_message_doc.slice(0, 12000)
+    : input.followup_message_doc === null
+    ? null
+    : record.followup_message_doc;
   const enabled = typeof input.followup_enabled === "boolean" ? (input.followup_enabled ? 1 : 0) : record.followup_enabled;
   const active = typeof input.active === "boolean" ? (input.active ? 1 : 0) : record.active;
   await env.DB.prepare(
     `UPDATE callback_records
-     SET followup_destination = ?, followup_message = ?, followup_enabled = ?, active = ?, updated_at = ?
+     SET followup_destination = ?,
+         followup_message = ?,
+         followup_message_html = ?,
+         followup_message_doc = ?,
+         followup_enabled = ?,
+         active = ?,
+         updated_at = ?
      WHERE id = ?`,
-  ).bind(destination, message, enabled, active, unixNow(), id).run();
+  ).bind(destination, message, messageHtml, messageDoc, enabled, active, unixNow(), id).run();
   return await getCallbackRecord(env, id);
 }
 
@@ -377,6 +403,8 @@ export async function handlePublishedCallbackTap(env: Env, ctx: CallbackTapConte
     source_thread_id: ctx.message?.message_thread_id ?? record.source_thread_id,
     response_destination: record.followup_destination,
     response_message: record.followup_message,
+    response_message_html: record.followup_message_html,
+    response_message_doc: record.followup_message_doc,
     response_chat_id: delivery.response_chat_id,
     response_message_id: delivery.response_message_id,
     delivery_status: delivery.status,
@@ -392,6 +420,8 @@ export async function sendManualCallbackUpdate(
   recordId: number,
   input: {
     message: string;
+    message_html?: string | null;
+    message_doc?: string | null;
     destination?: ManualCallbackDestination;
     recipient_user_id?: number | null;
     sent_by_tg_id: number;
@@ -401,6 +431,8 @@ export async function sendManualCallbackUpdate(
   if (!record) return { ok: false, error: "not_found" };
   const message = input.message.trim().slice(0, 3900);
   if (!message) return { ok: false, error: "message_required" };
+  const messageHtml = typeof input.message_html === "string" ? input.message_html.trim().slice(0, 3900) : null;
+  const messageDoc = typeof input.message_doc === "string" ? input.message_doc.slice(0, 12000) : null;
   const destination = input.destination === "channel" || input.destination === "dm" || input.destination === "github"
     ? input.destination
     : record.followup_destination;
@@ -419,6 +451,7 @@ export async function sendManualCallbackUpdate(
     : await sendRegularFollowup(env, record, {
         destination,
         message,
+        message_html: messageHtml,
         telegram_user_id: recipient?.telegram_user_id ?? null,
         private_chat_id: recipient?.private_chat_id ?? recipient?.telegram_user_id ?? null,
         source_chat_id: record.source_chat_id,
@@ -439,6 +472,8 @@ export async function sendManualCallbackUpdate(
     source_thread_id: record.source_thread_id,
     response_destination: destination,
     response_message: message,
+    response_message_html: destination === "github" ? null : messageHtml,
+    response_message_doc: messageDoc,
     response_chat_id: delivery.response_chat_id,
     response_message_id: delivery.response_message_id,
     delivery_status: delivery.status,
@@ -589,6 +624,8 @@ async function insertHistoricalInteraction(
     source_thread_id: record.source_thread_id,
     response_destination: null,
     response_message: null,
+    response_message_html: null,
+    response_message_doc: null,
     response_chat_id: null,
     response_message_id: null,
     delivery_status: "backfilled",
@@ -675,6 +712,7 @@ async function sendConfiguredFollowup(
   return await sendRegularFollowup(env, record, {
     destination: record.followup_destination,
     message: record.followup_message,
+    message_html: record.followup_message_html,
     telegram_user_id: ctx.from.id,
     private_chat_id: ctx.from.id,
     source_chat_id: ctx.message?.chat.id ?? record.source_chat_id,
@@ -689,6 +727,7 @@ async function sendRegularFollowup(
   input: {
     destination: CallbackDestination;
     message: string;
+    message_html?: string | null;
     telegram_user_id: number | null;
     private_chat_id: number | null;
     source_chat_id: number | null;
@@ -697,10 +736,11 @@ async function sendRegularFollowup(
   },
 ): Promise<{ status: string; response_chat_id: number | null; response_message_id: number | null; error: string | null }> {
   try {
+    const html = input.message_html?.trim() || esc(input.message);
     if (input.destination === "dm") {
       const chatId = input.private_chat_id ?? input.telegram_user_id;
       if (!chatId) return { status: "failed", response_chat_id: null, response_message_id: null, error: "missing_dm_chat" };
-      const msg = await sendMessage(env, chatId, esc(input.message), { parse_mode: "HTML" });
+      const msg = await sendMessage(env, chatId, html, { parse_mode: "HTML" });
       return { status: "sent", response_chat_id: chatId, response_message_id: msg.message_id, error: null };
     }
     const chatId = input.source_chat_id ?? record.source_chat_id;
@@ -712,7 +752,7 @@ async function sendRegularFollowup(
           reply_parameters: input.source_message_id ? { message_id: input.source_message_id } : undefined,
         }
       : { parse_mode: "HTML" as const };
-    const msg = await sendMessage(env, chatId, esc(input.message), opts);
+    const msg = await sendMessage(env, chatId, html, opts);
     return { status: "sent", response_chat_id: chatId, response_message_id: msg.message_id, error: null };
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
@@ -786,10 +826,11 @@ async function insertInteraction(
        callback_id, interaction_type, callback_query_id, telegram_user_id,
        telegram_username, telegram_first_name, telegram_last_name, private_chat_id,
        source_chat_id, source_message_id, source_thread_id, response_destination,
-       response_message, response_chat_id, response_message_id, delivery_status,
+       response_message, response_message_html, response_message_doc,
+       response_chat_id, response_message_id, delivery_status,
        delivery_error, sent_by_tg_id, created_at
      )
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       callbackId,
@@ -805,6 +846,8 @@ async function insertInteraction(
       input.source_thread_id,
       input.response_destination,
       input.response_message,
+      input.response_message_html,
+      input.response_message_doc,
       input.response_chat_id,
       input.response_message_id,
       input.delivery_status,

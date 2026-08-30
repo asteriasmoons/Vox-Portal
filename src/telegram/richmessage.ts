@@ -14,6 +14,7 @@ import {
   STATUSES, SEVERITIES, CATEGORIES,
 } from "../bugs/constants";
 import { publicIdOf, formatTimestamp } from "../bugs/formatting";
+import { bugAffectedAreaLabels, bugOptionLabel } from "../bugs/app-metadata";
 
 // ── Buttons ────────────────────────────────────────────────
 // RichMessageButton style values, per the Bot API 10.3 reference.
@@ -96,60 +97,83 @@ function solidHeaderKvTable(rows: [string, string][], caption?: string) {
 export function buildBugReportRichMessage(bug: BugRow): { blocks: unknown[] } {
   const st = statusMeta(bug.status);
   const sev = severityMeta(bug.severity);
-  const cat = categoryMeta(bug.category);
+  const bugType = categoryMeta(bug.bug_type ?? bug.category);
+  const feature = bugOptionLabel(bug.app, "feature", bug.feature);
+  const affectedAreas = bugAffectedAreaLabels(bug.app, bug.affected_areas);
+  const steps = extractSteps(bug.reproduction_steps);
   const blocks: unknown[] = [];
 
-  blocks.push(heading(`REPORT — ${publicIdOf(bug)}`, 2));
+  blocks.push(heading(`BUG REPORT — ${publicIdOf(bug)}`, 2));
   blocks.push(paragraph(bug.title));
-
-  // Live state table — updated in place on every management action.
-  blocks.push(
-    kvTable([
-      ["Status",   `${st.emoji} ${st.label}`],
-      ["Severity", sev.label],
-      ["Category", cat.label],
-    ]),
-  );
-
   blocks.push(divider());
 
-  if (bug.actual_behavior) {
-    blocks.push(heading("What Happened", 4));
-    blocks.push(paragraph(bug.actual_behavior));
-  }
-  if (bug.expected_behavior) {
-    blocks.push(heading("Expected Behavior", 4));
-    blocks.push(paragraph(bug.expected_behavior));
+  // Device Details table.
+  const deviceRows: [string, string][] = [];
+  const kv = (rows: [string, string][], k: string, v: string | null | undefined) => {
+    if (v && v.trim()) rows.push([k, v]);
+  };
+  kv(deviceRows, "App", bug.app);
+  kv(deviceRows, "Version", bug.app_version);
+  kv(deviceRows, "Build", bug.app_build);
+  kv(deviceRows, "Device", bug.device);
+  kv(deviceRows, "OS", bug.os);
+  if (deviceRows.length) {
+    blocks.push(heading("Device Details", 4));
+    blocks.push(kvTable(deviceRows));
+    blocks.push(divider());
   }
 
-  const steps = extractSteps(bug.reproduction_steps);
+  // Context Details table — live state rows update in place on every
+  // management action.
+  blocks.push(
+    kvTable([
+      ["Status", `${st.emoji} ${st.label}`],
+      ["Bug Type", bugType.label],
+      ["Severity", sev.label],
+      ["Reproducibility", bug.frequency ? frequencyMeta(bug.frequency)?.label ?? bug.frequency : "Not specified"],
+      ["Feature", feature || "Not provided"],
+      ["Affected Areas", affectedAreas.length ? affectedAreas.join(", ") : "None selected"],
+    ]),
+  );
+  blocks.push(divider());
+
   if (steps.length) {
     blocks.push(heading("Steps to Reproduce", 4));
-    blocks.push(orderedList(steps));
+    blocks.push({
+      type: "table",
+      is_compact: true,
+      is_bordered: false,
+      is_striped: false,
+      cells: [
+        [
+          { text: "Step", is_header: true, align: "left" },
+          { text: "Action", is_header: true, align: "left" },
+        ],
+        ...steps.map((step, index) => [
+          { text: String(index + 1), is_header: true, align: "left" },
+          { text: step, align: "left" },
+        ]),
+      ],
+    });
+    blocks.push(divider());
   }
 
-  if (bug.frequency) {
-    const f = frequencyMeta(bug.frequency);
-    blocks.push(paragraph(`Frequency: ${f?.label ?? bug.frequency}`));
-  }
-
-  // Environment table — compact, per API 10.3 is_compact.
-  const envRows: [string, string][] = [];
-  const kv = (k: string, v: string | null | undefined) => { if (v && v.trim()) envRows.push([k, v]); };
-  kv("App", bug.app);
-  kv("Version", bug.app_version);
-  kv("Build", bug.app_build);
-  kv("Device", bug.device);
-  kv("OS", bug.os);
-  if (envRows.length) {
-    blocks.push(heading("Environment", 4));
-    blocks.push(kvTable(envRows));
-  }
+  blocks.push(heading("Behavior Details", 4));
+  blocks.push(kvTable([
+    ["Expected", bug.expected_behavior || "Not provided"],
+    ["Actual", bug.actual_behavior],
+  ]));
+  blocks.push(divider());
 
   if (bug.notes) {
     blocks.push(heading("Additional Notes", 4));
     blocks.push(paragraph(bug.notes));
+    blocks.push(divider());
   }
+
+  blocks.push(heading("Screenshots & Recordings", 4));
+  blocks.push(paragraph("Attached files are posted as replies in this same comment thread."));
+  blocks.push(divider());
 
   const reporter = bug.reporter_username
     ? `@${bug.reporter_username}`
@@ -157,10 +181,12 @@ export function buildBugReportRichMessage(bug: BugRow): { blocks: unknown[] } {
   blocks.push(heading("Reporter", 4));
   blocks.push(paragraph(`${reporter} · submitted ${formatTimestamp(bug.created_at)}`));
 
-  if (bug.github_issue_url && bug.github_issue_number) {
+  const gitHubNumber = bug.github_sub_issue_number ?? bug.github_issue_number;
+  const gitHubUrl = bug.github_sub_issue_url ?? bug.github_issue_url;
+  if (gitHubUrl && gitHubNumber) {
     blocks.push(divider());
     blocks.push(
-      paragraph(`GitHub Issue: #${bug.github_issue_number} — ${bug.github_issue_url}`),
+      paragraph(`GitHub Issue: #${gitHubNumber} — ${gitHubUrl}`),
     );
   }
 
@@ -198,7 +224,7 @@ export function managementButtonBlocks(bug: BugRow): unknown[] {
     buttonsRow([
       { text: "Status",   style: "primary", callback_data: cb("menu", "status") },
       { text: "Severity", style: "primary", callback_data: cb("menu", "severity") },
-      { text: "Category", style: "primary", callback_data: cb("menu", "category") },
+      { text: "Bug Type", style: "primary", callback_data: cb("menu", "category") },
     ]),
     buttonsRow([
       isFixed
@@ -405,7 +431,7 @@ export function buildNotePromptRichMessage(bug: BugRow): { blocks: unknown[] } {
     blocks: [
       heading(`Add Note — ${publicIdOf(bug)}`, 3),
       paragraph(
-        `Reply to the report in this thread with:  /note <your note text>\n\nThe note will be posted to the discussion AND commented on GitHub Issue #${bug.github_issue_number ?? "—"}.`,
+        `Reply to the report in this thread with:  /note <your note text>\n\nThe note will be posted to the discussion AND commented on GitHub Issue #${bug.github_sub_issue_number ?? bug.github_issue_number ?? "—"}.`,
       ),
       buttonsRow([{ text: "Dismiss", callback_data: `rich:back:${bug.id}` }]),
     ],

@@ -11,6 +11,12 @@ interface BugSummary {
   status: string;
   severity: string;
   category: string;
+  bug_type?: string;
+  bug_type_label?: string;
+  feature?: string | null;
+  feature_label?: string | null;
+  affected_areas?: string | null;
+  affected_area_labels?: string[];
   created_at: number;
   // Delivery state (added by handleMyBugs). Missing on older API responses.
   telegram_posted?: boolean;
@@ -33,6 +39,7 @@ interface BugDetail extends BugSummary {
   notes: string | null;
   reporter_username: string | null;
   created_at: number;
+  github_url?: string | null;
 }
 interface AttachmentDetail {
   id: number;
@@ -168,8 +175,9 @@ function renderRow(bug: BugSummary & { type?: "bug" | "idea" | "beta"; app?: str
   if (isIdea || isBeta) {
     if (bug.app) parts.push(String(bug.app));
   } else {
-    if (bug.category) parts.push(labelize(String(bug.category)));
+    if (bug.bug_type_label || bug.bug_type || bug.category) parts.push(String(bug.bug_type_label || labelize(String(bug.bug_type || bug.category))));
     if (bug.severity) parts.push(labelize(String(bug.severity)));
+    if (bug.feature_label || bug.feature) parts.push(String(bug.feature_label || labelize(String(bug.feature))));
   }
   parts.push(formatRelative(bug.created_at));
   meta.textContent = parts.join(" · ");
@@ -277,7 +285,7 @@ function renderIdeaDetail(idea: Record<string, unknown>, attachments: Attachment
 
   // Hide bug-only grid cells for ideas and let the App cell span the full
   // width so long app names aren't truncated.
-  for (const id of ["detail-version","detail-build","detail-device","detail-os","detail-category","detail-severity","detail-frequency"]) {
+  for (const id of ["detail-version","detail-build","detail-device","detail-os","detail-category","detail-severity","detail-frequency","detail-feature","detail-affected-areas","detail-github"]) {
     const el = document.getElementById(id);
     const cell = el?.parentElement as HTMLElement | null | undefined;
     if (cell) cell.style.display = "none";
@@ -375,6 +383,11 @@ function renderBetaFeedbackDetail(beta: Record<string, unknown>, attachments: At
     const cell = el?.parentElement as HTMLElement | null | undefined;
     if (cell) cell.style.display = "none";
   }
+  for (const id of ["detail-feature","detail-affected-areas","detail-github"]) {
+    const el = document.getElementById(id);
+    const cell = el?.parentElement as HTMLElement | null | undefined;
+    if (cell) cell.style.display = "none";
+  }
   relabelGridCell("detail-category", "Feedback Type");
   relabelGridCell("detail-severity", "Overall");
   relabelGridCell("detail-frequency", "Would Use");
@@ -454,7 +467,7 @@ function renderBetaFeedbackDetail(beta: Record<string, unknown>, attachments: At
 function renderDetail(bug: BugDetail, attachments: AttachmentDetail[]): void {
   // Restore the bug view: un-hide any cells the idea view may have hidden,
   // restore the copy-card labels, and remove any idea-only injections.
-  for (const id of ["detail-version","detail-build","detail-device","detail-os","detail-category","detail-severity","detail-frequency"]) {
+  for (const id of ["detail-version","detail-build","detail-device","detail-os","detail-category","detail-severity","detail-frequency","detail-feature","detail-affected-areas","detail-github"]) {
     const el = document.getElementById(id);
     const cell = el?.parentElement as HTMLElement | null | undefined;
     if (cell) cell.style.display = "";
@@ -483,9 +496,9 @@ function renderDetail(bug: BugDetail, attachments: AttachmentDetail[]): void {
     rb.style.display = bug.can_resubmit === true ? "" : "none";
     rb.onclick = null;
   }
-  relabelGridCell("detail-category", "Category");
+  relabelGridCell("detail-category", "Bug Type");
   relabelGridCell("detail-severity", "Severity");
-  relabelGridCell("detail-frequency", "Frequency");
+  relabelGridCell("detail-frequency", "Reproducibility");
 
   setText("#detail-public-id", bug.public_id);
   setText("#detail-title", bug.title);
@@ -495,7 +508,7 @@ function renderDetail(bug: BugDetail, attachments: AttachmentDetail[]): void {
   setText("#detail-build", bug.app_build || "Not provided");
   setText("#detail-device", bug.device || "Not provided");
   setText("#detail-os", bug.os || "Not provided");
-  setText("#detail-category", labelize(bug.category));
+  setText("#detail-category", bug.bug_type_label || labelize(bug.bug_type || bug.category));
   setText("#detail-severity", labelize(bug.severity));
   setText("#detail-actual", bug.actual_behavior);
   setText("#detail-expected", bug.expected_behavior || "Not provided");
@@ -503,6 +516,10 @@ function renderDetail(bug: BugDetail, attachments: AttachmentDetail[]): void {
   setText("#detail-frequency", bug.frequency ? labelize(bug.frequency) : "Not specified");
   setText("#detail-notes", bug.notes || "None");
   setText("#detail-submitted", new Date(bug.created_at * 1000).toLocaleString());
+
+  ensureDetailCell("detail-feature", "Feature", bug.feature_label || (bug.feature ? labelize(bug.feature) : "Not provided"));
+  ensureDetailCell("detail-affected-areas", "Affected Areas", bug.affected_area_labels?.length ? bug.affected_area_labels.join(", ") : "Not provided");
+  ensureDetailCell("detail-github", "GitHub Issue", bug.github_url || "Not created");
 
   const attachmentList = requireEl<HTMLUListElement>("#detail-attachments");
   attachmentList.innerHTML = "";
@@ -636,6 +653,26 @@ function relabelGridCell(strongId: string, label: string): void {
   const cell = document.getElementById(strongId)?.parentElement as HTMLElement | null;
   const span = cell?.querySelector("span");
   if (span) span.textContent = label;
+}
+
+function ensureDetailCell(strongId: string, label: string, value: string): void {
+  let strong = document.getElementById(strongId) as HTMLElement | null;
+  if (!strong) {
+    const grid = document.querySelector<HTMLElement>(".detail-grid");
+    if (!grid) return;
+    const cell = document.createElement("div");
+    const span = document.createElement("span");
+    span.textContent = label;
+    strong = document.createElement("strong");
+    strong.id = strongId;
+    cell.append(span, strong);
+    grid.appendChild(cell);
+  } else {
+    relabelGridCell(strongId, label);
+    const cell = strong.parentElement as HTMLElement | null;
+    if (cell) cell.style.display = "";
+  }
+  strong.textContent = value;
 }
 
 function parseFeedbackTypes(value: string): string[] {
