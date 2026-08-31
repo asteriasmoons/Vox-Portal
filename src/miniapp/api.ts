@@ -1079,7 +1079,6 @@ export async function handleResubmitBug(env: Env, req: Request, id: number): Pro
   row = { ...row, report_message_id: reportMessage.message_id };
   const atts = await listAttachments(env, row.id);
   for (const a of atts) {
-    if (a.posted_message_id) continue;
     try {
       let posted: number | null = null;
       if (a.r2_key) {

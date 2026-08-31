@@ -318,7 +318,6 @@ export async function resendBugToTelegram(
   const { listAttachments, setAttachmentPostedMessage } = await import("../db/queries");
   const stored = await listAttachments(env, row.id);
   for (const a of stored) {
-    if (a.posted_message_id) continue; // already sitting in the thread
     try {
       await sleep(1100);
       let posted: number | null = null;
