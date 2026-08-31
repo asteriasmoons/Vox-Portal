@@ -297,9 +297,10 @@ export async function insertIdea(env: Env, input: NewIdeaInput, publicNumber: nu
   const row = await env.DB.prepare(
     `INSERT INTO ideas (
        public_number, reporter_tg_id, reporter_username, reporter_display_name,
-       app, title, what_i_want, why_useful, how_it_works, where_it_belongs, notes,
+       app, title, idea_type, what_i_want, why_useful, how_it_works, where_it_belongs,
+       user_flow, key_features, expected_experience, anything_to_avoid, notes,
        status, created_at, updated_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'new', ?, ?)
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, 'new', ?, ?)
      RETURNING *`,
   )
     .bind(
@@ -309,10 +310,14 @@ export async function insertIdea(env: Env, input: NewIdeaInput, publicNumber: nu
       input.reporter_display_name ?? null,
       input.app,
       input.title,
+      input.idea_type,
       input.what_i_want,
-      input.why_useful ?? null,
-      input.how_it_works ?? null,
-      input.where_it_belongs ?? null,
+      input.why_useful,
+      input.where_it_belongs,
+      input.user_flow,
+      input.key_features,
+      input.expected_experience,
+      input.anything_to_avoid ?? null,
       input.notes ?? null,
       now,
       now,

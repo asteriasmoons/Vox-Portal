@@ -318,20 +318,21 @@ export function buildCategoryPickerRichMessage(bug: BugRow): { blocks: unknown[]
 // Deliberately DIFFERENT layout from bug reports so ideas and bugs are
 // visually distinct in the same discussion group.
 import type { IdeaRow } from "../db/types";
-import { IDEA_STATUSES, ideaStatusMeta } from "../ideas/constants";
-import { ideaPublicId } from "../ideas/formatting";
+import { IDEA_STATUSES, ideaTypeLabel } from "../ideas/constants";
+import { ideaList, ideaPublicId, ideaWhereLabel } from "../ideas/formatting";
 
 export function buildIdeaReportRichMessage(idea: IdeaRow): { blocks: unknown[] } {
   const blocks: unknown[] = [];
-  const st = ideaStatusMeta(idea.status);
 
   // Plain text in headings — see comment on decision-row buttons above.
   blocks.push(heading(`IDEA — ${ideaPublicId(idea)}`, 2));
   blocks.push(paragraph(idea.title));
 
-  blocks.push(solidHeaderKvTable([
-    ["App",    idea.app],
-    ["Status", st.label],
+  blocks.push(heading("Idea Details", 4));
+  blocks.push(blueKvTable([
+    ["App", idea.app],
+    ["Idea Type", ideaTypeLabel(idea.idea_type)],
+    ["Where It Belongs", ideaWhereLabel(idea)],
   ]));
 
   blocks.push(divider());
@@ -344,8 +345,23 @@ export function buildIdeaReportRichMessage(idea: IdeaRow): { blocks: unknown[] }
   };
   sec("My Vision", idea.what_i_want);
   sec("Why It Would Be Useful", idea.why_useful);
-  sec("How It Works", idea.how_it_works);
-  sec("Space Placement", idea.where_it_belongs);
+  const flow = ideaList(idea.user_flow, idea.how_it_works);
+  if (flow.length) {
+    blocks.push(heading("User Flow", 4));
+    blocks.push(blueTable([
+      ["Step", "Action"],
+      ...flow.map((step, index) => [String(index + 1), step]),
+    ]));
+    blocks.push(divider());
+  }
+  const features = ideaList(idea.key_features);
+  if (features.length) {
+    blocks.push(heading("Key Features", 4));
+    blocks.push(orderedList(features));
+    blocks.push(divider());
+  }
+  sec("Expected Experience", idea.expected_experience);
+  sec("Anything to Avoid?", idea.anything_to_avoid);
   sec("Extra Notes", idea.notes);
 
   if (idea.decision_reason && (idea.status === "accepted" || idea.status === "rejected")) {

@@ -5,6 +5,7 @@ import type {
   BetaStatusId,
   BetaWouldUseId,
 } from "../beta/constants";
+import type { IdeaTypeId } from "../ideas/constants";
 
 export interface BugRow {
   id: number;
@@ -65,10 +66,15 @@ export interface IdeaRow {
   reporter_display_name: string | null;
   app: string;
   title: string;
+  idea_type: IdeaTypeId | null;
   what_i_want: string;
   why_useful: string | null;
   how_it_works: string | null;
   where_it_belongs: string | null;
+  user_flow: string | null;
+  key_features: string | null;
+  expected_experience: string | null;
+  anything_to_avoid: string | null;
   notes: string | null;
   status: string;
   decision_reason: string | null;
@@ -119,10 +125,14 @@ export interface NewIdeaInput {
   reporter_display_name?: string | null;
   app: string;
   title: string;
+  idea_type: IdeaTypeId;
   what_i_want: string;
-  why_useful?: string | null;
-  how_it_works?: string | null;
-  where_it_belongs?: string | null;
+  why_useful: string;
+  where_it_belongs: string;
+  user_flow: string;
+  key_features: string;
+  expected_experience: string;
+  anything_to_avoid?: string | null;
   notes?: string | null;
 }
 

@@ -21,6 +21,7 @@ import {
 import { APPS, CATEGORIES, SEVERITIES, FREQUENCIES, CATEGORY_IDS, SEVERITY_IDS, categoryMeta, type CategoryId, type SeverityId } from "../bugs/constants";
 import { BUG_APP_CONFIGS, areValidBugAffectedAreas, bugAffectedAreaLabels, bugOptionLabel, isValidBugFeature } from "../bugs/app-metadata";
 import { BETA_FEEDBACK_TYPE_IDS, BETA_FEEDBACK_TYPES, BETA_OVERALL_EXPERIENCE_IDS, BETA_OVERALL_EXPERIENCES, BETA_WOULD_USE_IDS, BETA_WOULD_USE_OPTIONS } from "../beta/constants";
+import { IDEA_TYPE_IDS, IDEA_TYPES, ideaTypeLabel } from "../ideas/constants";
 import { listBugsByReporter, getBug, listAttachments, setAttachmentPostedMessage, setBugTelegramLinkage, listBetaFeedbackByReporter, getBetaFeedback, listBetaFeedbackAttachments, getBetaFeedbackAttachment } from "../db/queries";
 import { publicIdOf } from "../bugs/formatting";
 import { getWorkRefBySubmission, listWorkHistory, type WorkHistoryFilters } from "../work/service";
@@ -51,6 +52,7 @@ export async function handleConfig(): Promise<Response> {
     categories: CATEGORIES,
     severities: SEVERITIES,
     frequencies: FREQUENCIES,
+    idea_types: IDEA_TYPES,
     beta_feedback_types: BETA_FEEDBACK_TYPES,
     beta_overall_experiences: BETA_OVERALL_EXPERIENCES,
     beta_would_use_options: BETA_WOULD_USE_OPTIONS,
@@ -226,7 +228,14 @@ export async function handleMyIdeaDetail(env: Env, req: Request, id: number): Pr
   const workRef = userIsAdmin ? await getWorkRefBySubmission(env, "idea", row.id) : null;
   return json({
     ok: true,
-    idea: { ...row, public_id: ideaPublicId(row), can_resubmit: userIsAdmin, ...(workRef ? { work_id: workRef.work_id } : {}) },
+    idea: {
+      ...row,
+      public_id: ideaPublicId(row),
+      idea_type_label: ideaTypeLabel(row.idea_type),
+      where_it_belongs_label: bugOptionLabel(row.app, "feature", row.where_it_belongs),
+      can_resubmit: userIsAdmin,
+      ...(workRef ? { work_id: workRef.work_id } : {}),
+    },
     attachments: atts.map((a) => ({ id: a.id, kind: a.kind, file_name: a.file_name, mime_type: a.mime_type, size_bytes: a.size_bytes, posted_message_id: a.posted_message_id })),
   });
 }
@@ -424,10 +433,14 @@ export async function handleSubmitIdea(env: Env, req: Request): Promise<Response
         reporter_display_name: [user.first_name, user.last_name].filter(Boolean).join(" ") || null,
         app: payload.app.trim(),
         title: payload.title.trim(),
+        idea_type: payload.idea_type as any,
         what_i_want: payload.what_i_want.trim(),
-        why_useful: nz(payload.why_useful),
-        how_it_works: nz(payload.how_it_works),
-        where_it_belongs: nz(payload.where_it_belongs),
+        why_useful: payload.why_useful.trim(),
+        where_it_belongs: payload.where_it_belongs.trim(),
+        user_flow: JSON.stringify(listPayload(payload.user_flow)),
+        key_features: JSON.stringify(listPayload(payload.key_features)),
+        expected_experience: payload.expected_experience.trim(),
+        anything_to_avoid: nz(payload.anything_to_avoid),
         notes: nz(payload.notes),
       },
       attachments,
@@ -691,10 +704,14 @@ function escapeSvgText(value: string): string {
 interface IdeaSubmitPayload {
   app: string;
   title: string;
+  idea_type: string;
   what_i_want: string;
-  why_useful?: string;
-  how_it_works?: string;
-  where_it_belongs?: string;
+  why_useful: string;
+  where_it_belongs: string;
+  user_flow: string[];
+  key_features: string[];
+  expected_experience: string;
+  anything_to_avoid?: string;
   notes?: string;
   attachments?: { key: string; name: string; mime: string; size?: number }[];
   submit_token?: string;
@@ -705,14 +722,30 @@ function validateIdeaPayload(p: IdeaSubmitPayload): string[] {
   if (!p || typeof p !== "object") return ["invalid body"];
   if (!p.app?.trim()) errs.push("app is required");
   if (!p.title?.trim()) errs.push("title is required");
+  if (!(IDEA_TYPE_IDS as readonly string[]).includes(p.idea_type)) errs.push("idea_type invalid");
   if (!p.what_i_want?.trim()) errs.push("what_i_want is required");
+  if (!p.why_useful?.trim()) errs.push("why_useful is required");
+  if (!p.where_it_belongs?.trim() || !isValidBugFeature(p.app, p.where_it_belongs)) errs.push("where_it_belongs invalid");
+  if (!listPayload(p.user_flow).length) errs.push("user_flow is required");
+  if (!listPayload(p.key_features).length) errs.push("key_features is required");
+  if (!p.expected_experience?.trim()) errs.push("expected_experience is required");
   if (p.title && p.title.length > MAX_TITLE_LEN) errs.push("title too long");
-  for (const k of ["what_i_want", "why_useful", "how_it_works", "where_it_belongs", "notes"] as const) {
+  for (const k of ["what_i_want", "why_useful", "expected_experience", "anything_to_avoid", "notes"] as const) {
     const v = p[k];
     if (v && v.length > MAX_TEXT_LEN) errs.push(`${k} too long`);
   }
+  for (const [key, values] of [["user_flow", listPayload(p.user_flow)], ["key_features", listPayload(p.key_features)]] as const) {
+    if (values.length > 30) errs.push(`${key} too many entries`);
+    if (values.some((v) => v.length > MAX_TEXT_LEN)) errs.push(`${key} entry too long`);
+  }
   if ((p.attachments?.length ?? 0) > MAX_ATTACHMENTS) errs.push("too many attachments");
   return errs;
+}
+
+function listPayload(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.map(String).map((item) => item.trim()).filter(Boolean)
+    : [];
 }
 
 // GET /api/mybugs — list this user's own bugs (for a future dashboard view).

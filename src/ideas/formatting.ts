@@ -3,7 +3,8 @@
 
 import type { IdeaRow, IdeaAttachmentRow } from "../db/types";
 import { esc, trunc } from "../util/html";
-import { ideaStatusMeta } from "./constants";
+import { ideaStatusMeta, ideaTypeLabel } from "./constants";
+import { bugOptionLabel } from "../bugs/app-metadata";
 
 export function ideaPublicId(row: Pick<IdeaRow, "public_number">): string {
   return `IDEA-${String(row.public_number).padStart(4, "0")}`;
@@ -48,20 +49,74 @@ export function renderIdeaGitHubComment(row: IdeaRow, attachmentNotes: string[] 
     parts.push(`---`);
     parts.push(`### ${h}\n\n${t}`);
   };
+  parts.push(`---`);
+  parts.push(renderMetadataTable(row));
   sec("My Vision", row.what_i_want);
   sec("Why It Would Be Useful", row.why_useful);
-  sec("How It Works", row.how_it_works);
-  sec("Space Placement", row.where_it_belongs);
-  sec("Extra Notes", row.notes);
+  const flow = ideaList(row.user_flow, row.how_it_works);
+  if (flow.length) {
+    parts.push(`---`);
+    parts.push(`### User Flow\n\n${renderStepsTable(flow)}`);
+  }
+  const features = ideaList(row.key_features);
+  if (features.length) {
+    parts.push(`---`);
+    parts.push(`### Key Features\n\n${features.map((feature) => `- [x] ${feature}`).join("\n")}`);
+  }
+  sec("Expected Experience", row.expected_experience);
+  sec("Anything to Avoid?", row.anything_to_avoid);
 
   if (attachmentNotes.length) {
     parts.push(`---`);
     parts.push(`### Reference\n\n${attachmentNotes.map((a) => `- ${a}`).join("\n")}`);
   }
 
+  sec("Extra Notes", row.notes);
+
   parts.push(`---`);
   parts.push(`_Submitted through the Voxiverse Telegram Mini App — ${ideaPublicId(row)}_`);
   return parts.join("\n\n");
+}
+
+function renderMetadataTable(row: IdeaRow): string {
+  return [
+    "| Detail | Value |",
+    "| --- | --- |",
+    `| App | ${tableCell(row.app)} |`,
+    `| Idea Type | ${tableCell(ideaTypeLabel(row.idea_type))} |`,
+    `| Where It Belongs | ${tableCell(ideaWhereLabel(row))} |`,
+  ].join("\n");
+}
+
+function renderStepsTable(steps: string[]): string {
+  return [
+    "| Step | Action |",
+    "| ---: | --- |",
+    ...steps.map((step, index) => `| ${index + 1} | ${tableCell(step)} |`),
+  ].join("\n");
+}
+
+function tableCell(value: string | null | undefined): string {
+  return (value ?? "")
+    .replace(/\|/g, "\\|")
+    .replace(/\r?\n/g, "<br>")
+    .trim();
+}
+
+export function ideaList(raw: string | null | undefined, fallback?: string | null): string[] {
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw) as unknown;
+      if (Array.isArray(parsed)) return parsed.map(String).map((item) => item.trim()).filter(Boolean);
+    } catch { /* fall through */ }
+    const lines = raw.split(/\r?\n/).map((line) => line.replace(/^\s*\d+\.\s*/, "").trim()).filter(Boolean);
+    if (lines.length) return lines;
+  }
+  return fallback ? fallback.split(/\r?\n/).map((line) => line.replace(/^\s*\d+\.\s*/, "").trim()).filter(Boolean) : [];
+}
+
+export function ideaWhereLabel(row: Pick<IdeaRow, "app" | "where_it_belongs">): string {
+  return bugOptionLabel(row.app, "feature", row.where_it_belongs) || row.where_it_belongs || "";
 }
 
 // DM for the reporter on notify-worthy status changes.

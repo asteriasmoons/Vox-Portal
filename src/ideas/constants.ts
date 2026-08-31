@@ -69,6 +69,24 @@ export function ideaStatusMeta(id: string) {
   return IDEA_STATUSES.find((s) => s.id === id) ?? IDEA_STATUSES[0];
 }
 
+export const IDEA_TYPES = [
+  { id: "new_feature", label: "New Feature" },
+  { id: "feature_expansion", label: "Feature Expansion" },
+  { id: "improvement", label: "Improvement" },
+  { id: "integration", label: "Integration" },
+  { id: "customization", label: "Customization" },
+  { id: "accessibility", label: "Accessibility" },
+  { id: "ui_ux", label: "UI/UX" },
+  { id: "automation", label: "Automation" },
+  { id: "other", label: "Other" },
+] as const;
+export type IdeaTypeId = (typeof IDEA_TYPES)[number]["id"];
+export const IDEA_TYPE_IDS: readonly IdeaTypeId[] = IDEA_TYPES.map((type) => type.id);
+export function ideaTypeLabel(id: string | null | undefined): string {
+  if (!id) return "";
+  return IDEA_TYPES.find((type) => type.id === id)?.label ?? id;
+}
+
 // Statuses that DM the reporter with an update.
 export const IDEA_NOTIFY_ON_STATUS: readonly IdeaStatusId[] = [
   "accepted", "rejected", "in_progress", "in_testing", "shipped",

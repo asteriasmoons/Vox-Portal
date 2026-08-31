@@ -1,4 +1,13 @@
 export function initTapToDismissTextFields(): void {
+  const syncTextFieldFocus = () => {
+    document.body.classList.toggle("text-field-focused", isEditableTextField(document.activeElement));
+  };
+
+  document.addEventListener("focusin", syncTextFieldFocus);
+  document.addEventListener("focusout", () => {
+    window.setTimeout(syncTextFieldFocus, 0);
+  });
+
   document.addEventListener("click", (ev) => {
     const active = document.activeElement;
     if (!isEditableTextField(active)) return;
@@ -9,6 +18,7 @@ export function initTapToDismissTextFields(): void {
     if (target.closest("label")?.contains(active)) return;
 
     active.blur();
+    syncTextFieldFocus();
   }, { passive: true });
 }
 

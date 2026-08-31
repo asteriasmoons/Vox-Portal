@@ -33,20 +33,44 @@
           <label>IDEA TITLE <span class="req">*</span>
             <input name="title" required maxlength="200" placeholder="One line describing your idea" />
           </label>
+          <label>IDEA TYPE <span class="req">*</span>
+            <select name="idea_type" required id="idea-type-select">
+              <option value="">Choose idea type…</option>
+            </select>
+          </label>
           <label>MY VISION <span class="req">*</span>
-            <textarea name="what_i_want" required rows="4" placeholder="Describe the feature you'd like."></textarea>
+            <textarea name="what_i_want" required rows="4" placeholder="What would you like added or changed?"></textarea>
           </label>
-          <label>WHY IT WOULD BE USEFUL
-            <textarea name="why_useful" rows="3" placeholder="Who benefits and how?"></textarea>
+          <label>WHY IT WOULD BE USEFUL <span class="req">*</span>
+            <textarea name="why_useful" required rows="3" placeholder="Who would this help, and what would it improve?"></textarea>
           </label>
-          <label>HOW IT WORKS
-            <textarea name="how_it_works" rows="4" placeholder="Roughly how you'd expect it to behave."></textarea>
+          <label>WHERE IT BELONGS <span class="req">*</span>
+            <select name="where_it_belongs" required id="idea-where-belongs-select">
+              <option value="">Choose an app first…</option>
+            </select>
+            <small class="hint" id="idea-where-belongs-hint"></small>
           </label>
-          <label>SPACE PLACEMENT
-            <textarea name="where_it_belongs" rows="3" placeholder="Where exactly does it belong inside the app; which screen?"></textarea>
+        </section>
+
+        <section class="card">
+          <h2>DETAILS</h2>
+          <div class="steps-field idea-repeatable-field">
+            <div class="steps-label">USER FLOW <span class="req">*</span></div>
+            <small class="hint">Walk us through how you imagine using it from beginning to end.</small>
+            <div id="idea-user-flow-list" class="steps-list"></div>
+            <input type="hidden" name="user_flow" id="idea-user-flow" />
+          </div>
+          <div class="steps-field idea-repeatable-field">
+            <div class="steps-label">KEY FEATURES <span class="req">*</span></div>
+            <small class="hint">What should this idea be able to do?</small>
+            <div id="idea-key-features-list" class="steps-list"></div>
+            <input type="hidden" name="key_features" id="idea-key-features" />
+          </div>
+          <label>EXPECTED EXPERIENCE <span class="req">*</span>
+            <textarea name="expected_experience" required rows="4" placeholder="What should using this feature feel like or accomplish for you?"></textarea>
           </label>
-          <label>EXTRA NOTES
-            <textarea name="notes" rows="3" placeholder="Anything else worth mentioning."></textarea>
+          <label>ANYTHING TO AVOID?
+            <textarea name="anything_to_avoid" rows="3" placeholder="Anything you specifically would not want this idea to do?"></textarea>
           </label>
         </section>
 
@@ -59,6 +83,13 @@
             <span>+ Add files</span>
           </label>
           <ul id="idea-file-list" class="files"></ul>
+        </section>
+
+        <section class="card">
+          <h2>EXTRA</h2>
+          <label>EXTRA NOTES
+            <textarea name="notes" rows="3" placeholder="Anything else worth mentioning."></textarea>
+          </label>
         </section>
 
         <button type="submit" id="idea-submit-btn" class="primary">Submit idea</button>

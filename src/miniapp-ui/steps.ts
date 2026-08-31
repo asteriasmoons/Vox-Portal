@@ -11,16 +11,24 @@ export function initSteps(): void {
     hidden.value = values.map((text, index) => `${index + 1}. ${text}`).join("\n");
   };
 
+  const resizeStep = (textarea: HTMLTextAreaElement) => {
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, 46), 120)}px`;
+  };
+
   const addStep = (value = "") => {
     const row = document.createElement("div");
     row.className = "step-row";
 
     const textarea = document.createElement("textarea");
     textarea.className = "step-input";
-    textarea.rows = 2;
+    textarea.rows = 1;
     textarea.placeholder = `Step ${list.children.length + 1}`;
     textarea.value = value;
-    textarea.addEventListener("input", sync);
+    textarea.addEventListener("input", () => {
+      resizeStep(textarea);
+      sync();
+    });
     const add = document.createElement("button");
     add.type = "button";
     add.className = "step-add";
@@ -34,6 +42,7 @@ export function initSteps(): void {
 
     row.append(textarea, add);
     list.appendChild(row);
+    resizeStep(textarea);
     sync();
   };
 

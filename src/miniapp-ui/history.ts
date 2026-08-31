@@ -489,10 +489,15 @@ function renderIdeaDetail(idea: Record<string, unknown>, attachments: Attachment
 
   // Hide bug-only grid cells for ideas and let the App cell span the full
   // width so long app names aren't truncated.
-  for (const id of ["detail-version","detail-build","detail-device","detail-os","detail-category","detail-severity","detail-frequency","detail-feature","detail-affected-areas","detail-github"]) {
+  for (const id of ["detail-version","detail-build","detail-device","detail-os","detail-frequency","detail-feature","detail-affected-areas","detail-github"]) {
     const el = document.getElementById(id);
     const cell = el?.parentElement as HTMLElement | null | undefined;
     if (cell) cell.style.display = "none";
+  }
+  for (const id of ["detail-category","detail-severity"]) {
+    const el = document.getElementById(id);
+    const cell = el?.parentElement as HTMLElement | null | undefined;
+    if (cell) cell.style.display = "";
   }
   const appCell = document.getElementById("detail-app")?.parentElement as HTMLElement | null;
   if (appCell) {
@@ -509,32 +514,28 @@ function renderIdeaDetail(idea: Record<string, unknown>, attachments: Attachment
   // Relabel the copy-card headings to match idea field names, and populate.
   const copyCard = document.querySelector<HTMLElement>(".detail-copy-card");
   if (copyCard) {
+    removeIdeaDynamicSections();
     const headings = copyCard.querySelectorAll("h2, h3");
-    const labels = ["MY VISION", "WHY IT WOULD BE USEFUL", "HOW IT WORKS", "ADDITIONAL NOTES"];
+    const labels = ["MY VISION", "WHY IT WOULD BE USEFUL", "USER FLOW", "EXPECTED EXPERIENCE"];
     headings.forEach((h, i) => { if (labels[i]) h.textContent = labels[i]; });
   }
+  relabelGridCell("detail-category", "Idea Type");
+  relabelGridCell("detail-severity", "Where It Belongs");
+  setText("#detail-category", String((idea.idea_type_label ?? labelize(get("idea_type"))) || "Not provided"));
+  setText("#detail-severity", String((idea.where_it_belongs_label ?? get("where_it_belongs")) || "Not provided"));
   setText("#detail-actual",   get("what_i_want"));
   setText("#detail-expected", get("why_useful")   || "Not provided");
-  setText("#detail-steps",    get("how_it_works") || "Not provided");
-  setText("#detail-notes",    get("notes")        || "None");
+  setText("#detail-steps",    numberedListText(parseIdeaList(get("user_flow"), get("how_it_works"))) || "Not provided");
+  setText("#detail-notes",    get("expected_experience") || "Not provided");
   renderAdminWorkId(get("work_id"));
 
-  // Space Placement — the bug template has no field for this. Inject a
-  // dedicated row into the copy card so the info isn't lost.
-  const where = String(get("where_it_belongs") || "").trim();
-  const existingWhere = document.getElementById("detail-where-belongs");
-  if (existingWhere) existingWhere.remove();
   const existingBetaChanges = document.getElementById("detail-beta-changes");
   if (existingBetaChanges) existingBetaChanges.previousElementSibling?.remove();
   if (existingBetaChanges) existingBetaChanges.remove();
-  if (where && copyCard) {
-    const h = document.createElement("h3");
-    h.textContent = "SPACE PLACEMENT";
-    const p = document.createElement("p");
-    p.id = "detail-where-belongs";
-    p.textContent = where;
-    copyCard.appendChild(h);
-    copyCard.appendChild(p);
+  if (copyCard) {
+    insertDetailSection(copyCard, "detail-idea-key-features", "KEY FEATURES", checklistText(parseIdeaList(get("key_features"))), "#detail-notes");
+    insertDetailSection(copyCard, "detail-idea-avoid", "ANYTHING TO AVOID?", get("anything_to_avoid"), null);
+    insertDetailSection(copyCard, "detail-idea-extra-notes", "EXTRA NOTES", get("notes"), null);
   }
 
   const createdAt = Number(idea.created_at ?? 0);
@@ -609,6 +610,7 @@ function renderBetaFeedbackDetail(beta: Record<string, unknown>, attachments: At
 
   const copyCard = document.querySelector<HTMLElement>(".detail-copy-card");
   if (copyCard) {
+    removeIdeaDynamicSections();
     const headings = copyCard.querySelectorAll("h2, h3");
     const labels = ["What Did You Do?", "What Happened?", "What Did You Expect?", "Additional Notes"];
     headings.forEach((h, i) => { if (labels[i]) h.textContent = labels[i]; });
@@ -685,6 +687,7 @@ function renderDetail(bug: BugDetail, attachments: AttachmentDetail[]): void {
   if (appStrong) { appStrong.style.whiteSpace = ""; appStrong.style.overflow = ""; appStrong.style.textOverflow = ""; }
   const copyCard = document.querySelector<HTMLElement>(".detail-copy-card");
   if (copyCard) {
+    removeIdeaDynamicSections();
     const headings = copyCard.querySelectorAll("h2, h3");
     const bugLabels = ["What happened?", "Expected", "Steps to reproduce", "Additional notes"];
     headings.forEach((h, i) => { if (bugLabels[i]) h.textContent = bugLabels[i]; });
@@ -906,6 +909,53 @@ function parseFeedbackTypes(value: string): string[] {
     if (Array.isArray(parsed)) return parsed.filter((v): v is string => typeof v === "string");
   } catch { /* fall through */ }
   return value.split(",").map((v) => v.trim()).filter(Boolean);
+}
+
+function parseIdeaList(raw: string, fallback = ""): string[] {
+  const source = raw.trim() ? raw : fallback;
+  if (!source.trim()) return [];
+  try {
+    const parsed = JSON.parse(source) as unknown;
+    if (Array.isArray(parsed)) return parsed.map(String).map((item) => item.trim()).filter(Boolean);
+  } catch { /* fall through */ }
+  return source.split(/\r?\n/)
+    .map((line) => line.replace(/^\s*(?:[-*]|\d+\.)\s*/, "").trim())
+    .filter(Boolean);
+}
+
+function numberedListText(items: string[]): string {
+  return items.map((item, index) => `${index + 1}. ${item}`).join("\n");
+}
+
+function checklistText(items: string[]): string {
+  return items.map((item) => `- ${item}`).join("\n");
+}
+
+function removeIdeaDynamicSections(): void {
+  for (const id of ["detail-idea-key-features","detail-idea-avoid","detail-idea-extra-notes"]) {
+    const el = document.getElementById(id);
+    if (el) el.previousElementSibling?.remove();
+    if (el) el.remove();
+  }
+}
+
+function insertDetailSection(copyCard: HTMLElement, id: string, headingText: string, value: string, beforeSelector: string | null): void {
+  const text = value.trim();
+  if (!text) return;
+  const h = document.createElement("h3");
+  h.textContent = headingText;
+  const p = document.createElement("p");
+  p.id = id;
+  p.className = "prewrap";
+  p.textContent = text;
+  const before = beforeSelector ? copyCard.querySelector(beforeSelector)?.previousElementSibling ?? null : null;
+  if (before) {
+    copyCard.insertBefore(h, before);
+    copyCard.insertBefore(p, before);
+  } else {
+    copyCard.appendChild(h);
+    copyCard.appendChild(p);
+  }
 }
 
 function formatRelative(unixSec: number): string {

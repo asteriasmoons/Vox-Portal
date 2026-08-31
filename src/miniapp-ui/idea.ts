@@ -22,10 +22,17 @@ interface Entry {
 
 const queue: Entry[] = [];
 let nextId = 1;
+let ideaConfig: ConfigResponse | null = null;
 
 interface ConfigResponse {
   ok: true;
   apps: string[];
+  bug_apps: {
+    id: string;
+    display_name: string;
+    features: { id: string; label: string; hint?: string }[];
+  }[];
+  idea_types: { id: string; label: string }[];
   categories: { id: string; label: string }[];
   severities: { id: string; label: string }[];
   frequencies: { id: string; label: string }[];
@@ -49,6 +56,8 @@ interface IdeaSubmitResponse {
 export async function initIdeaPage(): Promise<void> {
   if (!INIT_DATA) showTopError("This form must be opened from inside Telegram.");
   void loadIdeaConfig();
+  initRepeatable("idea-user-flow-list", "idea-user-flow", "Step");
+  initRepeatable("idea-key-features-list", "idea-key-features", "Feature");
   wireFilePicker();
   wireSubmit();
 }
@@ -58,15 +67,102 @@ async function loadIdeaConfig(): Promise<void> {
     const res = await fetch("/api/config");
     const cfg = (await res.json()) as ConfigResponse;
     if (!cfg.ok) throw new Error("config");
+    ideaConfig = cfg;
     const sel = requireEl<HTMLSelectElement>("#idea-app-select");
     for (const name of cfg.apps) {
       const opt = document.createElement("option");
       opt.value = name; opt.textContent = name;
       sel.appendChild(opt);
     }
+    const typeSel = requireEl<HTMLSelectElement>("#idea-type-select");
+    for (const type of cfg.idea_types) {
+      const opt = document.createElement("option");
+      opt.value = type.id; opt.textContent = type.label;
+      typeSel.appendChild(opt);
+    }
+    sel.addEventListener("change", () => refreshWhereBelongsOptions(sel.value));
+    refreshWhereBelongsOptions(sel.value);
   } catch {
     showTopError("Couldn't load the form options. Please close and reopen.");
   }
+}
+
+function refreshWhereBelongsOptions(app: string): void {
+  const sel = requireEl<HTMLSelectElement>("#idea-where-belongs-select");
+  const hint = $("#idea-where-belongs-hint");
+  const current = sel.value;
+  sel.innerHTML = "";
+  const empty = document.createElement("option");
+  empty.value = "";
+  empty.textContent = app ? "Choose where it belongs…" : "Choose an app first…";
+  sel.appendChild(empty);
+
+  const options = ideaConfig?.bug_apps.find((entry) => entry.id === app)?.features ?? [];
+  for (const option of options) {
+    const opt = document.createElement("option");
+    opt.value = option.id;
+    opt.textContent = option.label;
+    opt.dataset.hint = option.hint ?? "";
+    sel.appendChild(opt);
+  }
+  sel.value = options.some((option) => option.id === current) ? current : "";
+  const updateHint = () => { if (hint) hint.textContent = sel.selectedOptions[0]?.dataset.hint ?? ""; };
+  sel.onchange = updateHint;
+  updateHint();
+}
+
+function initRepeatable(listId: string, hiddenId: string, placeholderPrefix: string): void {
+  const list = requireEl<HTMLElement>(`#${listId}`);
+  const hidden = requireEl<HTMLInputElement>(`#${hiddenId}`);
+
+  const sync = () => {
+    const values = Array.from(list.querySelectorAll<HTMLTextAreaElement>(".step-input"))
+      .map((el) => el.value.trim())
+      .filter(Boolean);
+    hidden.value = JSON.stringify(values);
+    Array.from(list.querySelectorAll<HTMLTextAreaElement>(".step-input"))
+      .forEach((textarea, index) => { textarea.placeholder = `${placeholderPrefix} ${index + 1}`; });
+  };
+
+  const addEntry = (value = "") => {
+    const row = document.createElement("div");
+    row.className = "step-row";
+
+    const textarea = document.createElement("textarea");
+    textarea.className = "step-input";
+    textarea.rows = 2;
+    textarea.placeholder = `${placeholderPrefix} ${list.children.length + 1}`;
+    textarea.value = value;
+    textarea.addEventListener("input", sync);
+
+    const add = document.createElement("button");
+    add.type = "button";
+    add.className = "step-add";
+    add.setAttribute("aria-label", `Add another ${placeholderPrefix.toLowerCase()}`);
+    add.innerHTML = '<img src="/icons/create.svg" alt="" />';
+    add.addEventListener("click", () => {
+      addEntry();
+      const inputs = list.querySelectorAll<HTMLTextAreaElement>(".step-input");
+      inputs[inputs.length - 1]?.focus();
+    });
+
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "step-remove";
+    remove.setAttribute("aria-label", `Remove ${placeholderPrefix.toLowerCase()}`);
+    remove.textContent = "×";
+    remove.addEventListener("click", () => {
+      if (list.children.length <= 1) textarea.value = "";
+      else row.remove();
+      sync();
+    });
+
+    row.append(textarea, add, remove);
+    list.appendChild(row);
+    sync();
+  };
+
+  addEntry();
 }
 
 function wireFilePicker(): void {
@@ -149,7 +245,13 @@ function wireSubmit(): void {
     const errs: [string, string][] = [];
     if (!data.app) errs.push(["app", "Required"]);
     if (!data.title?.trim()) errs.push(["title", "Required"]);
+    if (!data.idea_type?.trim()) errs.push(["idea_type", "Required"]);
     if (!data.what_i_want?.trim()) errs.push(["what_i_want", "Required"]);
+    if (!data.why_useful?.trim()) errs.push(["why_useful", "Required"]);
+    if (!data.where_it_belongs?.trim()) errs.push(["where_it_belongs", "Required"]);
+    if (!jsonList(data.user_flow).length) errs.push(["user_flow", "Required"]);
+    if (!jsonList(data.key_features).length) errs.push(["key_features", "Required"]);
+    if (!data.expected_experience?.trim()) errs.push(["expected_experience", "Required"]);
     if (errs.length) {
       for (const [name, msg] of errs) {
         const el = form.querySelector<HTMLElement>(`[name="${name}"]`);
@@ -180,10 +282,14 @@ function wireSubmit(): void {
         body: JSON.stringify({
           app: data.app,
           title: data.title,
+          idea_type: data.idea_type,
           what_i_want: data.what_i_want,
           why_useful: data.why_useful,
-          how_it_works: data.how_it_works,
           where_it_belongs: data.where_it_belongs,
+          user_flow: jsonList(data.user_flow),
+          key_features: jsonList(data.key_features),
+          expected_experience: data.expected_experience,
+          anything_to_avoid: data.anything_to_avoid,
           notes: data.notes,
           attachments,
           submit_token: typeof crypto !== "undefined" && "randomUUID" in crypto
@@ -198,6 +304,18 @@ function wireSubmit(): void {
       showTopError("Couldn't submit your idea. Please try again.");
     }
   });
+}
+
+function jsonList(value: string | undefined): string[] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed)
+      ? parsed.map(String).map((item) => item.trim()).filter(Boolean)
+      : [];
+  } catch {
+    return [];
+  }
 }
 
 function showIdeaSuccess(publicId: string, telegram: { status: "sent" | "failed" }, github: IdeaGitHubResult): void {
