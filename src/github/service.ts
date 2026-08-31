@@ -46,6 +46,7 @@ export async function createIssueForBug(env: Env, bugId: number): Promise<GitHub
     // github_issue_number without github_sub_issue_number; those remain
     // safely untouched and are not treated as sub-issue-backed reports.
     if (bug.github_sub_issue_number && bug.github_sub_issue_url && bug.github_repo) {
+      await refreshExistingIssueBody(env, bug);
       log.info("github_issue_already_exists", {
         bugId,
         number: bug.github_sub_issue_number,
@@ -80,6 +81,11 @@ export async function createIssueForBug(env: Env, bugId: number): Promise<GitHub
         github_parent_issue_url: `https://github.com/${owner}/${repoNameOnly}/issues/${appMeta.parent_github_issue_number}`,
         github_status: "created",
         github_error: null,
+      });
+      await refreshExistingIssueBody(env, {
+        ...bug,
+        github_sub_issue_number: bug.github_issue_number,
+        github_sub_issue_url: bug.github_issue_url,
       });
       return { ok: true, number: bug.github_issue_number, url: bug.github_issue_url, repo: bug.github_repo };
     }
@@ -127,7 +133,7 @@ export async function createIssueForBug(env: Env, bugId: number): Promise<GitHub
 
     const attachments = await listAttachments(env, bug.id);
     const title = buildTitle(bug);
-    const body = buildBody(bug, attachments);
+    const body = buildBody(env, bug, attachments);
 
     // Create issue first without labels — labels can fail independently
     // (missing label in repo) and must not block issue creation.
@@ -221,7 +227,7 @@ export function buildTitle(bug: BugRow): string {
   return `${publicIdOf(bug)}: ${summary.slice(0, 140)}`;
 }
 
-export function buildBody(bug: BugRow, attachments: AttachmentRow[]): string {
+export function buildBody(env: Env, bug: BugRow, attachments: AttachmentRow[]): string {
   const parts: string[] = [];
   const bugType = categoryMeta(bug.bug_type ?? bug.category).label;
   const feature = bugOptionLabel(bug.app, "feature", bug.feature) || "Not provided";
@@ -261,14 +267,7 @@ export function buildBody(bug: BugRow, attachments: AttachmentRow[]): string {
   if (bug.notes) parts.push(`## Additional Notes\n\n${escapeMd(bug.notes)}`);
 
   if (attachments.length) {
-    const lines: string[] = [];
-    for (const a of attachments) {
-      const name = a.file_name || a.r2_key || `${a.kind}-${a.id}`;
-      lines.push(`- ${escapeMd(name)}${a.mime_type ? ` (${escapeMd(a.mime_type)})` : ""}`);
-    }
-    parts.push(
-      `## Screenshots & Recordings\n\n${lines.join("\n")}\n\n_See the linked Telegram comment thread for the full media._`,
-    );
+    parts.push(`## Screenshots & Recordings\n\n${renderAttachmentReferences(env, attachments)}`);
   } else {
     parts.push("## Screenshots & Recordings\n\nNone submitted.");
   }
@@ -307,6 +306,65 @@ function escapeMd(value: string): string {
   return String(value)
     .replace(/\\/g, "\\\\")
     .replace(/\|/g, "\\|")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function renderAttachmentReferences(env: Env, attachments: AttachmentRow[]): string {
+  const images = attachments.filter((a) => a.r2_key && (a.mime_type ?? "").toLowerCase().startsWith("image/"));
+  const nonImages = attachments.filter((a) => !a.r2_key || !(a.mime_type ?? "").toLowerCase().startsWith("image/"));
+  const chunks: string[] = [];
+  if (images.length) chunks.push(renderImageRows(env, images));
+  if (nonImages.length) {
+    chunks.push(nonImages.map((a) => {
+      const name = a.file_name || a.r2_key || `${a.kind}-${a.id}`;
+      const url = a.r2_key ? bugAttachmentPublicUrl(env, a) : null;
+      return url
+        ? `- [${escapeMarkdownLinkText(name)}](${url})${a.mime_type ? ` (${escapeMd(a.mime_type)})` : ""}`
+        : `- ${escapeMd(name)}${a.mime_type ? ` (${escapeMd(a.mime_type)})` : ""}`;
+    }).join("\n"));
+  }
+  return chunks.join("\n\n");
+}
+
+function renderImageRows(env: Env, images: AttachmentRow[]): string {
+  const rows: string[] = [];
+  for (let i = 0; i < images.length; i += 2) {
+    const first = images[i];
+    const second = images[i + 1];
+    if (second) {
+      rows.push(`<p align="center">${renderImageCell(env, first)}&nbsp;&nbsp;${renderImageCell(env, second)}</p>`);
+    } else {
+      rows.push(`<p align="center">${renderImageCell(env, first)}</p>`);
+    }
+  }
+  return rows.join("\n\n");
+}
+
+function renderImageCell(env: Env, attachment: AttachmentRow): string {
+  const name = escapeHtmlAttr(attachment.file_name || attachment.r2_key || `${attachment.kind}-${attachment.id}`);
+  const url = escapeHtmlAttr(bugAttachmentPublicUrl(env, attachment));
+  const thumbnailUrl = escapeHtmlAttr(`${bugAttachmentPublicUrl(env, attachment)}?variant=rounded`);
+  return `<a href="${url}"><img src="${thumbnailUrl}" width="150" alt="${name}"></a>`;
+}
+
+function bugAttachmentPublicUrl(env: Env, attachment: AttachmentRow): string {
+  const base = env.PUBLIC_ORIGIN.replace(/\/+$/, "");
+  const name = encodeURIComponent(attachment.file_name || `${attachment.kind}-${attachment.id}`);
+  return `${base}/attachments/bugs/${attachment.id}/${name}`;
+}
+
+function escapeMarkdownLinkText(value: string): string {
+  return value.replace(/([\\[\]])/g, "\\$1");
+}
+
+function escapeHtmlAttr(value: string): string {
+  return escapeHtmlText(value).replace(/"/g, "&quot;");
+}
+
+function escapeHtmlText(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 }
@@ -354,6 +412,25 @@ function repoOf(bug: BugRow): { owner: string; repo: string } | null {
   const [owner, repo] = bug.github_repo.split("/");
   if (!owner || !repo) return null;
   return { owner, repo };
+}
+
+async function refreshExistingIssueBody(env: Env, bug: BugRow): Promise<void> {
+  const r = repoOf(bug);
+  if (!r || !env.GITHUB_TOKEN) return;
+  const attachments = await listAttachments(env, bug.id);
+  const body = buildBody(env, bug, attachments);
+  try {
+    const res = await ghFetch(env, `${GH_API}/repos/${r.owner}/${r.repo}/issues/${bug.github_sub_issue_number}`, {
+      method: "PATCH",
+      body: JSON.stringify({ body }),
+    });
+    if (!res.ok) {
+      const t = await res.text();
+      log.warn("github_issue_body_refresh_failed", { bugId: bug.id, status: res.status, body: t.slice(0, 300) });
+    }
+  } catch (e) {
+    log.warn("github_issue_body_refresh_exception", { bugId: bug.id, err: String(e) });
+  }
 }
 
 export async function postIssueComment(env: Env, bug: BugRow, body: string): Promise<SyncResult> {

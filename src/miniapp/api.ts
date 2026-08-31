@@ -22,7 +22,7 @@ import { APPS, CATEGORIES, SEVERITIES, FREQUENCIES, CATEGORY_IDS, SEVERITY_IDS, 
 import { BUG_APP_CONFIGS, areValidBugAffectedAreas, bugAffectedAreaLabels, bugOptionLabel, isValidBugFeature } from "../bugs/app-metadata";
 import { BETA_FEEDBACK_TYPE_IDS, BETA_FEEDBACK_TYPES, BETA_OVERALL_EXPERIENCE_IDS, BETA_OVERALL_EXPERIENCES, BETA_WOULD_USE_IDS, BETA_WOULD_USE_OPTIONS } from "../beta/constants";
 import { IDEA_TYPE_IDS, IDEA_TYPES, ideaTypeLabel } from "../ideas/constants";
-import { listBugsByReporter, getBug, listAttachments, setAttachmentPostedMessage, setBugTelegramLinkage, listBetaFeedbackByReporter, getBetaFeedback, listBetaFeedbackAttachments, getBetaFeedbackAttachment } from "../db/queries";
+import { listBugsByReporter, getBug, listAttachments, getAttachment, setAttachmentPostedMessage, setBugTelegramLinkage, listBetaFeedbackByReporter, getBetaFeedback, listBetaFeedbackAttachments, getBetaFeedbackAttachment } from "../db/queries";
 import { publicIdOf } from "../bugs/formatting";
 import { getWorkRefBySubmission, listWorkHistory, type WorkHistoryFilters } from "../work/service";
 import { log } from "../util/log";
@@ -608,6 +608,20 @@ function betaFeedbackGithubResult(row: {
 
 export async function handleBetaFeedbackAttachment(env: Env, req: Request, attachmentId: number): Promise<Response> {
   const row = await getBetaFeedbackAttachment(env, attachmentId);
+  return serveStoredAttachment(env, req, row, attachmentId);
+}
+
+export async function handleBugAttachment(env: Env, req: Request, attachmentId: number): Promise<Response> {
+  const row = await getAttachment(env, attachmentId);
+  return serveStoredAttachment(env, req, row, attachmentId);
+}
+
+async function serveStoredAttachment(
+  env: Env,
+  req: Request,
+  row: { id: number; r2_key: string | null; file_name: string | null; mime_type: string | null; kind: string } | null,
+  attachmentId: number,
+): Promise<Response> {
   if (!row?.r2_key) return new Response("not found", { status: 404 });
   const obj = await env.ATTACHMENTS.get(row.r2_key);
   if (!obj?.body) return new Response("not found", { status: 404 });

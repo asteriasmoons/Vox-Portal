@@ -15,6 +15,7 @@ import { dispatchUpdate } from "./telegram/webhook";
 import {
   handleConfig,
   handleBetaFeedbackAttachment,
+  handleBugAttachment,
   handleCallbackDetail,
   handleCallbacksList,
   handleMe,
@@ -89,6 +90,10 @@ export default {
     const betaFeedbackAttachmentMatch = url.pathname.match(/^\/attachments\/beta-feedback\/(\d+)(?:\/.*)?$/);
     if (betaFeedbackAttachmentMatch && req.method === "GET") {
       return handleBetaFeedbackAttachment(env, req, Number(betaFeedbackAttachmentMatch[1]));
+    }
+    const bugAttachmentMatch = url.pathname.match(/^\/attachments\/bugs\/(\d+)(?:\/.*)?$/);
+    if (bugAttachmentMatch && req.method === "GET") {
+      return handleBugAttachment(env, req, Number(bugAttachmentMatch[1]));
     }
 
     // ── One-shot admin: register slash-command list with Telegram ──
