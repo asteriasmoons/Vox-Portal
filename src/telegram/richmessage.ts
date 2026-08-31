@@ -46,9 +46,23 @@ export function disabledButton(text: string, style?: ButtonStyle): RichMessageBu
 }
 
 // ── Block builders ────────────────────────────────────────
+type RichText = string | { type: string; text?: RichText; [key: string]: unknown } | RichText[];
+type WithInternalWorkId = { work_id?: string | null };
+
 const heading = (text: string, size = 3) => ({ type: "heading", text, size });
-const paragraph = (text: string) => ({ type: "paragraph", text });
+const paragraph = (text: RichText) => ({ type: "paragraph", text });
 const divider = () => ({ type: "divider" });
+
+function internalWorkIdQuote(row: WithInternalWorkId): unknown | null {
+  const workId = row.work_id?.trim();
+  if (!workId) return null;
+  return {
+    type: "blockquote",
+    blocks: [
+      paragraph({ type: "spoiler", text: `Work ID: ${workId}` }),
+    ],
+  };
+}
 
 function orderedList(items: string[]) {
   return {
@@ -113,7 +127,7 @@ function blueKvTable(rows: [string, string][], caption?: string) {
 // Attachments are NOT embedded here — they continue to post as their own
 // messages in the thread so the existing attachment flow is untouched, per
 // the "do not break working attachment delivery" instruction.
-export function buildBugReportRichMessage(bug: BugRow): { blocks: unknown[] } {
+export function buildBugReportRichMessage(bug: BugRow & WithInternalWorkId): { blocks: unknown[] } {
   const st = statusMeta(bug.status);
   const sev = severityMeta(bug.severity);
   const bugType = categoryMeta(bug.bug_type ?? bug.category);
@@ -123,6 +137,8 @@ export function buildBugReportRichMessage(bug: BugRow): { blocks: unknown[] } {
   const blocks: unknown[] = [];
 
   blocks.push(heading(`BUG REPORT — ${publicIdOf(bug)}`, 2));
+  const workIdBlock = internalWorkIdQuote(bug);
+  if (workIdBlock) blocks.push(workIdBlock);
   blocks.push(paragraph(bug.title));
   blocks.push(divider());
 
@@ -321,11 +337,13 @@ import type { IdeaRow } from "../db/types";
 import { IDEA_STATUSES, ideaTypeLabel } from "../ideas/constants";
 import { ideaList, ideaPublicId, ideaWhereLabel } from "../ideas/formatting";
 
-export function buildIdeaReportRichMessage(idea: IdeaRow): { blocks: unknown[] } {
+export function buildIdeaReportRichMessage(idea: IdeaRow & WithInternalWorkId): { blocks: unknown[] } {
   const blocks: unknown[] = [];
 
   // Plain text in headings — see comment on decision-row buttons above.
   blocks.push(heading(`IDEA — ${ideaPublicId(idea)}`, 2));
+  const workIdBlock = internalWorkIdQuote(idea);
+  if (workIdBlock) blocks.push(workIdBlock);
   blocks.push(paragraph(idea.title));
 
   blocks.push(heading("Idea Details", 4));
@@ -472,12 +490,14 @@ import {
 } from "../beta/constants";
 import { betaFeedbackPublicId, betaFeedbackTypeLabels, formatTimestamp as formatBetaTs } from "../beta/formatting";
 
-export function buildBetaFeedbackRichMessage(row: BetaFeedbackRow): { blocks: unknown[] } {
+export function buildBetaFeedbackRichMessage(row: BetaFeedbackRow & WithInternalWorkId): { blocks: unknown[] } {
   const blocks: unknown[] = [];
   const st = betaStatusMeta(row.status);
   const feedbackTypes = betaFeedbackTypeLabels(row);
 
   blocks.push(heading(`BETA FEEDBACK — ${betaFeedbackPublicId(row)}`, 2));
+  const workIdBlock = internalWorkIdQuote(row);
+  if (workIdBlock) blocks.push(workIdBlock);
   blocks.push(paragraph(row.testing));
   blocks.push(divider());
 
