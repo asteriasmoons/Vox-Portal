@@ -59,7 +59,7 @@ function internalWorkIdQuote(row: WithInternalWorkId): unknown | null {
   return {
     type: "blockquote",
     blocks: [
-      paragraph({ type: "spoiler", text: `Work ID: ${workId}` }),
+      paragraph({ type: "spoiler", text: { type: "bold", text: workId } }),
     ],
   };
 }
