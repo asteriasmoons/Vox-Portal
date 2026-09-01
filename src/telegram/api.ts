@@ -115,11 +115,21 @@ export interface TelegramMessage {
   video?: { file_id: string; mime_type?: string; file_name?: string; file_size?: number; width?: number; height?: number };
   document?: { file_id: string; mime_type?: string; file_name?: string; file_size?: number };
   animation?: { file_id: string; mime_type?: string; file_name?: string; file_size?: number; width?: number; height?: number };
-  entities?: { type: string; offset: number; length: number }[];
+  entities?: TelegramMessageEntity[];
   // Bot API 10.2+ — set when this Message represents an ephemeral message.
   // The regular `message_id` on ephemerals is often 0/absent; use this id
   // with editEphemeralMessage* and deleteEphemeralMessage.
   ephemeral_message_id?: number;
+}
+
+export interface TelegramMessageEntity {
+  type: string;
+  offset: number;
+  length: number;
+  url?: string;
+  language?: string;
+  custom_emoji_id?: string;
+  user?: { id: number; is_bot?: boolean; first_name: string; last_name?: string; username?: string };
 }
 
 export interface TelegramChatJoinRequest {

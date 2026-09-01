@@ -120,7 +120,7 @@ export function ideaWhereLabel(row: Pick<IdeaRow, "app" | "where_it_belongs">): 
 }
 
 // DM for the reporter on notify-worthy status changes.
-export function renderIdeaReporterDm(row: IdeaRow, fromStatus: string | null): string {
+export function renderIdeaReporterDm(row: IdeaRow, fromStatus: string | null, formattedReasonHtml?: string | null): string {
   const st = ideaStatusMeta(row.status);
   const id = ideaPublicId(row);
   const lines: string[] = [];
@@ -135,7 +135,7 @@ export function renderIdeaReporterDm(row: IdeaRow, fromStatus: string | null): s
   }
   if (row.decision_reason && (row.status === "accepted" || row.status === "rejected")) {
     lines.push("");
-    lines.push(`<i>${esc(row.decision_reason)}</i>`);
+    lines.push(formattedReasonHtml?.trim() || `<i>${esc(row.decision_reason)}</i>`);
   }
   lines.push("");
   lines.push("Thanks for the idea.");

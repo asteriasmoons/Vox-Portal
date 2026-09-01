@@ -32,9 +32,11 @@ import {
   answerCallbackQuery,
   sendEphemeralRichMessage,
   deleteEphemeralMessage,
-  sendMessage,
-  type EphemeralMessageParameters,
-} from "./api";
+	  sendMessage,
+	  type EphemeralMessageParameters,
+	  type TelegramMessageEntity,
+	} from "./api";
+import { telegramEntitiesSliceToHtml } from "./entities";
 import {
   buildStatusPickerRichMessage,
   buildSeverityPickerRichMessage,
@@ -519,9 +521,10 @@ export async function handleAdminGroupCommand(
     from?: { id: number; username?: string; first_name?: string };
     sender_chat?: { id: number; type: string; title?: string; username?: string };
     message_thread_id?: number;
-    reply_to_message?: import("./api").TelegramMessage;
-    text?: string;
-  },
+	    reply_to_message?: import("./api").TelegramMessage;
+	    text?: string;
+	    entities?: TelegramMessageEntity[];
+	  },
 ): Promise<boolean> {
   const text = (msg.text ?? "").trim();
   if (!text.startsWith("/")) return false;
@@ -620,9 +623,10 @@ async function handleReasonCommand(
     from?: { id: number; username?: string; first_name?: string };
     sender_chat?: { id: number; type: string; title?: string; username?: string };
     message_thread_id?: number;
-    reply_to_message?: import("./api").TelegramMessage;
-    text?: string;
-  },
+	    reply_to_message?: import("./api").TelegramMessage;
+	    text?: string;
+	    entities?: TelegramMessageEntity[];
+	  },
   args: string,
 ): Promise<boolean> {
   const actorTgId = msg.from && isAdmin(env, msg.from.id) ? msg.from.id : 0;
@@ -686,9 +690,9 @@ async function handleReasonCommand(
   if (!idea) return true;
   threadId = idea.discussion_thread_id ?? threadId;
 
-  await env.DB.prepare(`UPDATE ideas SET decision_reason = ?, updated_at = ? WHERE id = ?`)
-    .bind(args, Math.floor(Date.now() / 1000), ideaId)
-    .run();
+	  await env.DB.prepare(`UPDATE ideas SET decision_reason = ?, updated_at = ? WHERE id = ?`)
+	    .bind(args, Math.floor(Date.now() / 1000), ideaId)
+	    .run();
 
   // Clear the pending key using the durable idea thread id and any candidate
   // ids Telegram supplied so stale prompts cannot linger.
@@ -704,12 +708,13 @@ async function handleReasonCommand(
   const { refreshIdeaRichReport } = await import("./channel");
   await refreshIdeaRichReport(env, fresh);
 
-  try {
-    const { renderIdeaReporterDm } = await import("../ideas/formatting");
-    await sendMessage(env, fresh.reporter_tg_id, renderIdeaReporterDm(fresh, null), { parse_mode: "HTML" });
-  } catch (e) {
-    log.warn("idea_reason_reporter_dm_failed", { ideaId, err: String(e) });
-  }
+	  try {
+	    const { renderIdeaReporterDm } = await import("../ideas/formatting");
+	    const formattedReason = formattedReasonFromCommand(msg, args);
+	    await sendMessage(env, fresh.reporter_tg_id, renderIdeaReporterDm(fresh, null, formattedReason), { parse_mode: "HTML" });
+	  } catch (e) {
+	    log.warn("idea_reason_reporter_dm_failed", { ideaId, err: String(e) });
+	  }
 
   if (fresh.github_discussion_id && fresh.github_comment_id) {
     const { resolveIdeaDiscussion } = await import("../ideas/constants");
@@ -730,6 +735,23 @@ async function handleReasonCommand(
       : {};
   await sendMessage(env, msg.chat.id, `Reason saved for ${ideaPublicLabel(fresh.public_number)}.`, sendOpts);
   return true;
+}
+
+function formattedReasonFromCommand(
+  msg: { text?: string; entities?: TelegramMessageEntity[] },
+  fallbackReason: string,
+): string | null {
+  const text = msg.text ?? "";
+  if (!text || !msg.entities?.length) return null;
+  const command = text.match(/^\/\S+\s*/);
+  if (!command) return null;
+  let start = command[0].length;
+  let end = text.length;
+  while (start < end && /\s/.test(text[start] ?? "")) start++;
+  while (end > start && /\s/.test(text[end - 1] ?? "")) end--;
+  if (start >= end) return null;
+  const formatted = telegramEntitiesSliceToHtml(text, msg.entities, start, end).trim();
+  return formatted || esc(fallbackReason);
 }
 
 function ideaPublicLabel(publicNumber: number): string {
