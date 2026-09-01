@@ -9,6 +9,8 @@ export function initSteps(): void {
       .map((el) => el.value.trim())
       .filter(Boolean);
     hidden.value = values.map((text, index) => `${index + 1}. ${text}`).join("\n");
+    Array.from(list.querySelectorAll<HTMLTextAreaElement>(".step-input"))
+      .forEach((textarea, index) => { textarea.placeholder = `Step ${index + 1}`; });
   };
 
   const resizeStep = (textarea: HTMLTextAreaElement) => {
@@ -40,7 +42,22 @@ export function initSteps(): void {
       inputs[inputs.length - 1]?.focus();
     });
 
-    row.append(textarea, add);
+    const remove = document.createElement("button");
+    remove.type = "button";
+    remove.className = "step-remove";
+    remove.setAttribute("aria-label", "Remove step");
+    remove.innerHTML = '<img src="/icons/minuswavy.svg" alt="" />';
+    remove.addEventListener("click", () => {
+      if (list.children.length <= 1) {
+        textarea.value = "";
+        resizeStep(textarea);
+      } else {
+        row.remove();
+      }
+      sync();
+    });
+
+    row.append(textarea, add, remove);
     list.appendChild(row);
     resizeStep(textarea);
     sync();

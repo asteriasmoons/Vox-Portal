@@ -306,43 +306,50 @@ fieldset.severity-options legend {
   cursor: pointer;
 }
 .step-add img { width: 24px; height: 24px; object-fit: contain; filter: brightness(0); }
-body[data-page="create-bug"] .step-row { grid-template-columns: minmax(0, 1fr) 44px; gap: 8px; align-items: start; }
+body[data-page="create-bug"] .step-row,
+.idea-repeatable-field .step-row {
+  grid-template-columns: minmax(0, 1fr) 44px 44px;
+  gap: 8px;
+  align-items: stretch;
+}
 body[data-page="create-bug"] .step-input {
   min-height: 46px;
   max-height: 120px;
   line-height: 1.25;
   padding: 11px 14px;
 }
-body[data-page="create-bug"] .step-add {
-  width: 44px;
-  min-width: 44px;
-  height: 46px;
-  min-height: 46px;
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);
-}
-body[data-page="create-bug"] .step-add img { width: 20px; height: 20px; }
-.idea-repeatable-field .hint { margin: -2px 0 8px; }
-.idea-repeatable-field .step-row { grid-template-columns: minmax(0, 1fr) 44px 44px; }
-.idea-repeatable-field .step-input {
-  min-height: 58px;
-  max-height: 88px;
-  font-size: 14px;
-  text-align: center;
-}
+body[data-page="create-bug"] .step-add,
+.idea-repeatable-field .step-add,
 .step-remove {
   width: 44px;
   min-width: 44px;
-  border: 1px solid rgba(255,92,115,.32);
+  min-height: 46px;
+  height: auto;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);
+}
+body[data-page="create-bug"] .step-add img,
+.idea-repeatable-field .step-add img { width: 20px; height: 20px; }
+.idea-repeatable-field .hint { margin: -2px 0 8px; }
+.idea-repeatable-field .step-input {
+  min-height: 46px;
+  max-height: 120px;
+  line-height: 1.25;
+  padding: 11px 14px;
+}
+.step-remove {
+  border: 1.5px solid var(--border-strong);
   border-radius: 12px;
-  background: rgba(92,20,36,.22);
-  color: var(--danger);
+  background: rgba(0,0,0,0.35);
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 0;
   cursor: pointer;
-  font-size: 22px;
-  font-weight: 900;
+}
+.step-remove img {
+  width: 20px;
+  height: 20px;
+  object-fit: contain;
 }
 
 .row.two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }

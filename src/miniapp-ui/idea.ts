@@ -124,16 +124,24 @@ function initRepeatable(listId: string, hiddenId: string, placeholderPrefix: str
       .forEach((textarea, index) => { textarea.placeholder = `${placeholderPrefix} ${index + 1}`; });
   };
 
+  const resizeEntry = (textarea: HTMLTextAreaElement) => {
+    textarea.style.height = "auto";
+    textarea.style.height = `${Math.min(Math.max(textarea.scrollHeight, 46), 120)}px`;
+  };
+
   const addEntry = (value = "") => {
     const row = document.createElement("div");
     row.className = "step-row";
 
     const textarea = document.createElement("textarea");
     textarea.className = "step-input";
-    textarea.rows = 2;
+    textarea.rows = 1;
     textarea.placeholder = `${placeholderPrefix} ${list.children.length + 1}`;
     textarea.value = value;
-    textarea.addEventListener("input", sync);
+    textarea.addEventListener("input", () => {
+      resizeEntry(textarea);
+      sync();
+    });
 
     const add = document.createElement("button");
     add.type = "button";
@@ -150,15 +158,20 @@ function initRepeatable(listId: string, hiddenId: string, placeholderPrefix: str
     remove.type = "button";
     remove.className = "step-remove";
     remove.setAttribute("aria-label", `Remove ${placeholderPrefix.toLowerCase()}`);
-    remove.textContent = "×";
+    remove.innerHTML = '<img src="/icons/minuswavy.svg" alt="" />';
     remove.addEventListener("click", () => {
-      if (list.children.length <= 1) textarea.value = "";
-      else row.remove();
+      if (list.children.length <= 1) {
+        textarea.value = "";
+        resizeEntry(textarea);
+      } else {
+        row.remove();
+      }
       sync();
     });
 
     row.append(textarea, add, remove);
     list.appendChild(row);
+    resizeEntry(textarea);
     sync();
   };
 
