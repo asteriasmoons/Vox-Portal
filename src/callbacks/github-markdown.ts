@@ -141,11 +141,14 @@ function renderPlainHtml(nodes: MdNode[]): string {
 }
 
 function escapeMarkdownText(text: string): string {
-  return text
-    .replace(/\\/g, "\\\\")
-    .replace(/([`*_{}\[\]()#+.!|-])/g, "\\$1")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+  return text.split("\n").map((line) => {
+    if (line.trim() === "---") return "---";
+    return line
+      .replace(/\\/g, "\\\\")
+      .replace(/([`*_{}\[\]()#+.!|-])/g, "\\$1")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;");
+  }).join("\n");
 }
 
 function safeMarkdownUrl(value: string): string {

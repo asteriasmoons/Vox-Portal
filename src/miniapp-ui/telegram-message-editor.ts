@@ -21,6 +21,7 @@ const TOOLBAR_ITEMS = [
   ["pre", "Pre", "Code block"],
   ["quote", "Quote", "Blockquote"],
   ["expandableQuote", "More", "Expandable blockquote"],
+  ["divider", "---", "Divider"],
   ["link", "Link", "Link"],
 ] as const;
 
@@ -59,7 +60,7 @@ export class TelegramMessageEditor {
 
   getValue(): EditorValue {
     const html = serializeTelegramHtml(this.editable).trim();
-    const text = this.editable.innerText.replace(/\u200b/g, "").trim();
+    const text = serializeEditorText(this.editable).replace(/\u200b/g, "").trim();
     const doc: TelegramMessageDoc = {
       version: 1,
       html: sanitizeEditorHtml(this.editable),
@@ -140,15 +141,17 @@ export class TelegramMessageEditor {
     if (action === "bold" || action === "italic" || action === "underline" || action === "strikeThrough") {
       document.execCommand(action as InlineCommand, false);
     } else if (action === "spoiler") {
-      this.wrapSelection("span", { "data-tg-spoiler": "true", class: "tg-editor-spoiler" });
+      this.toggleInlineWrapper("[data-tg-spoiler]", "span", { "data-tg-spoiler": "true", class: "tg-editor-spoiler" });
     } else if (action === "code") {
-      this.wrapSelection("code");
+      this.toggleInlineWrapper("code", "code");
     } else if (action === "pre") {
-      document.execCommand("formatBlock", false, "pre");
+      this.toggleBlock("pre");
     } else if (action === "quote") {
       this.applyBlockquote(false);
     } else if (action === "expandableQuote") {
       this.applyBlockquote(true);
+    } else if (action === "divider") {
+      this.insertDivider();
     } else if (action === "link") {
       this.showLinkPanel();
       return;
@@ -176,7 +179,37 @@ export class TelegramMessageEditor {
     this.setRange(next);
   }
 
+  private toggleInlineWrapper(selector: string, tagName: string, attrs: Record<string, string> = {}): void {
+    const existing = closestElement(this.currentRange()?.startContainer ?? null, selector, this.editable);
+    if (existing) {
+      this.unwrapElement(existing);
+      return;
+    }
+    this.wrapSelection(tagName, attrs);
+  }
+
+  private unwrapElement(el: Element): void {
+    const parent = el.parentNode;
+    if (!parent) return;
+    const marker = document.createTextNode("");
+    parent.insertBefore(marker, el);
+    el.replaceWith(...Array.from(el.childNodes));
+    const range = document.createRange();
+    range.setStartAfter(marker);
+    range.collapse(true);
+    marker.remove();
+    this.setRange(range);
+  }
+
   private applyBlockquote(expandable: boolean): void {
+    const current = closestElement(this.currentRange()?.startContainer ?? null, "blockquote", this.editable);
+    if (current) {
+      const isExpandable = current.hasAttribute("data-expandable");
+      if (isExpandable === expandable) {
+        this.toggleBlock("div");
+        return;
+      }
+    }
     document.execCommand("formatBlock", false, "blockquote");
     const block = closestElement(this.currentRange()?.startContainer ?? null, "blockquote", this.editable);
     if (!block) return;
@@ -187,6 +220,35 @@ export class TelegramMessageEditor {
       block.removeAttribute("data-expandable");
       block.classList.remove("tg-editor-expandable-quote");
     }
+  }
+
+  private toggleBlock(tagName: "pre" | "div"): void {
+    const current = this.currentRange()?.startContainer ?? null;
+    const matching = tagName === "pre"
+      ? closestElement(current, "pre", this.editable)
+      : closestElement(current, "blockquote, pre", this.editable);
+    document.execCommand("formatBlock", false, matching ? "div" : tagName);
+  }
+
+  private insertDivider(): void {
+    const range = this.currentRange();
+    if (!range) return;
+    range.deleteContents();
+
+    const divider = document.createElement("hr");
+    divider.className = "tg-editor-divider";
+    divider.setAttribute("data-divider", "true");
+
+    const after = document.createElement("div");
+    after.appendChild(document.createElement("br"));
+
+    range.insertNode(after);
+    range.insertNode(divider);
+
+    const next = document.createRange();
+    next.setStart(after, 0);
+    next.collapse(true);
+    this.setRange(next);
   }
 
   private showLinkPanel(): void {
@@ -246,6 +308,7 @@ export class TelegramMessageEditor {
     this.setActive("pre", !!closestElement(node, "pre", this.editable));
     this.setActive("quote", !!closestElement(node, "blockquote", this.editable));
     this.setActive("expandableQuote", !!closestElement(node, "blockquote[data-expandable]", this.editable));
+    this.setActive("divider", false);
     this.setActive("link", !!closestElement(node, "a", this.editable));
   }
 
@@ -349,11 +412,12 @@ function removeUnsafeNodes(root: ParentNode): void {
 }
 
 function isAllowedEditorElement(el: Element): boolean {
-  return ["B", "STRONG", "I", "EM", "U", "S", "STRIKE", "DEL", "SPAN", "CODE", "PRE", "BLOCKQUOTE", "A", "BR", "DIV"].includes(el.tagName);
+  return ["B", "STRONG", "I", "EM", "U", "S", "STRIKE", "DEL", "SPAN", "CODE", "PRE", "BLOCKQUOTE", "A", "BR", "DIV", "HR"].includes(el.tagName);
 }
 
 function isAllowedEditorAttr(el: Element, attr: string): boolean {
   if (el.tagName === "A") return attr === "href";
+  if (el.tagName === "HR") return attr === "class" || attr === "data-divider";
   if (el.tagName === "SPAN") return attr === "class" || attr === "data-tg-spoiler";
   if (el.tagName === "BLOCKQUOTE") return attr === "class" || attr === "data-expandable";
   return attr === "class";
@@ -363,12 +427,28 @@ export function serializeTelegramHtml(root: HTMLElement): string {
   return Array.from(root.childNodes).map((node) => serializeNode(node)).join("").replace(/\u200b/g, "");
 }
 
+function serializeEditorText(root: HTMLElement): string {
+  return Array.from(root.childNodes).map((node) => serializeTextNode(node)).join("");
+}
+
+function serializeTextNode(node: Node): string {
+  if (node.nodeType === Node.TEXT_NODE) return node.textContent ?? "";
+  if (!(node instanceof HTMLElement)) return "";
+  const tag = node.tagName.toLowerCase();
+  if (tag === "br") return "\n";
+  if (tag === "hr" && node.hasAttribute("data-divider")) return "\n---\n";
+  const inner = Array.from(node.childNodes).map((child) => serializeTextNode(child)).join("");
+  if (tag === "div") return `${inner}\n`;
+  return inner;
+}
+
 function serializeNode(node: Node): string {
   if (node.nodeType === Node.TEXT_NODE) return escapeHtml(node.textContent ?? "");
   if (!(node instanceof HTMLElement)) return "";
 
   const tag = node.tagName.toLowerCase();
   const inner = Array.from(node.childNodes).map((child) => serializeNode(child)).join("");
+  if (tag === "hr" && node.hasAttribute("data-divider")) return "\n---\n";
   if (!inner && tag !== "br") return "";
   if (tag === "br") return "\n";
   if (tag === "b" || tag === "strong") return `<b>${inner}</b>`;
