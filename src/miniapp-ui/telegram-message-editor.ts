@@ -46,12 +46,14 @@ export class TelegramMessageEditor {
       this.editable.textContent = input.text ?? "";
     }
     this.ensureContent();
+    this.resetPendingInlineFormattingIfEmpty();
     this.updateToolbarState();
   }
 
   clear(): void {
     this.editable.innerHTML = "";
     this.ensureContent();
+    this.resetPendingInlineFormattingIfEmpty();
     this.updateToolbarState();
   }
 
@@ -125,6 +127,7 @@ export class TelegramMessageEditor {
     this.editable.addEventListener("keyup", () => this.updateToolbarState());
     this.editable.addEventListener("mouseup", () => this.updateToolbarState());
     this.editable.addEventListener("focus", () => this.updateToolbarState());
+    this.editable.addEventListener("focusin", () => this.resetPendingInlineFormattingIfEmpty());
     this.editable.addEventListener("paste", (e) => this.handlePaste(e));
 
     this.root.replaceChildren(this.toolbar, this.linkPanel, this.editable);
@@ -234,10 +237,10 @@ export class TelegramMessageEditor {
   private updateToolbarState(): void {
     const range = this.currentRange();
     const node = range?.startContainer ?? null;
-    this.setActive("bold", !!closestStyled(node, this.editable, ["b", "strong"], "fontWeight", (v) => Number(v) >= 600 || v === "bold"));
-    this.setActive("italic", !!closestStyled(node, this.editable, ["i", "em"], "fontStyle", (v) => v === "italic"));
-    this.setActive("underline", !!closestStyled(node, this.editable, ["u"], "textDecorationLine", (v) => v.includes("underline")));
-    this.setActive("strikeThrough", !!closestStyled(node, this.editable, ["s", "strike", "del"], "textDecorationLine", (v) => v.includes("line-through")));
+    this.setActive("bold", !!closestFormatting(node, this.editable, ["b", "strong"], isInlineBold));
+    this.setActive("italic", !!closestFormatting(node, this.editable, ["i", "em"], (el) => el.style.fontStyle === "italic"));
+    this.setActive("underline", !!closestFormatting(node, this.editable, ["u"], (el) => el.style.textDecorationLine.includes("underline") || el.style.textDecoration.includes("underline")));
+    this.setActive("strikeThrough", !!closestFormatting(node, this.editable, ["s", "strike", "del"], (el) => el.style.textDecorationLine.includes("line-through") || el.style.textDecoration.includes("line-through")));
     this.setActive("spoiler", !!closestElement(node, "[data-tg-spoiler]", this.editable));
     this.setActive("code", !!closestElement(node, "code", this.editable));
     this.setActive("pre", !!closestElement(node, "pre", this.editable));
@@ -272,6 +275,18 @@ export class TelegramMessageEditor {
     if (!sel) return;
     sel.removeAllRanges();
     sel.addRange(range);
+  }
+
+  private resetPendingInlineFormattingIfEmpty(): void {
+    if (this.editable.innerText.replace(/\u200b/g, "").trim()) return;
+    try {
+      for (const command of ["bold", "italic", "underline", "strikeThrough"] as const) {
+        if (document.queryCommandState?.(command)) document.execCommand(command, false);
+      }
+    } catch {
+      // Some WebViews expose execCommand but not reliable query state. Empty
+      // editor content still serializes as plain text.
+    }
   }
 }
 
@@ -404,21 +419,24 @@ function closestElement(node: Node | null, selector: string, root: HTMLElement):
   return null;
 }
 
-function closestStyled(
+function closestFormatting(
   node: Node | null,
   root: HTMLElement,
   tags: string[],
-  styleName: keyof CSSStyleDeclaration,
-  matchesStyle: (value: string) => boolean,
+  matchesInlineStyle: (value: HTMLElement) => boolean,
 ): Element | null {
   let current: Node | null = node;
   while (current && current !== root) {
     if (current instanceof HTMLElement) {
       if (tags.includes(current.tagName.toLowerCase())) return current;
-      const value = getComputedStyle(current)[styleName];
-      if (typeof value === "string" && matchesStyle(value)) return current;
+      if (matchesInlineStyle(current)) return current;
     }
     current = current.parentNode;
   }
   return null;
+}
+
+function isInlineBold(el: HTMLElement): boolean {
+  const weight = el.style.fontWeight;
+  return weight === "bold" || Number(weight) >= 600;
 }

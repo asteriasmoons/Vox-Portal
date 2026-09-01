@@ -10,6 +10,7 @@ import { addDiscussionComment, type DiscussionTarget } from "../github/discussio
 import { postIssueComment } from "../github/service";
 import { esc, trunc } from "../util/html";
 import { log } from "../util/log";
+import { callbackEditorHtmlToGitHubMarkdown } from "./github-markdown";
 
 export type CallbackDestination = "channel" | "dm";
 export type ManualCallbackDestination = CallbackDestination | "github";
@@ -461,7 +462,7 @@ export async function sendManualCallbackUpdate(
   }
 
   const delivery = destination === "github"
-    ? await sendGitHubCallbackUpdate(env, record, message)
+    ? await sendGitHubCallbackUpdate(env, record, message, messageHtml)
     : await sendRegularFollowup(env, record, {
         destination,
         message,
@@ -779,8 +780,10 @@ async function sendGitHubCallbackUpdate(
   env: Env,
   record: CallbackRecord,
   message: string,
+  messageHtml?: string | null,
 ): Promise<{ status: string; response_chat_id: number | null; response_message_id: number | null; error: string | null }> {
-  const body = `### Callback Update\n\n${message}\n\n_Updated through Vox Portal._`;
+  const markdown = callbackEditorHtmlToGitHubMarkdown(messageHtml, message);
+  const body = `### Callback Update\n\n${markdown}\n\n_Updated through Vox Portal._`;
   try {
     if (record.source_kind === "bug" && record.source_id) {
       const bug = await env.DB.prepare(`SELECT * FROM bugs WHERE id = ?`).bind(record.source_id).first<BugRow>();

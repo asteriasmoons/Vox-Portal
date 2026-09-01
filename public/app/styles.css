@@ -982,13 +982,17 @@ img.nav-glyph { content: ""; }
   background: rgba(0,0,0,.35);
   color: var(--text);
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 500;
   line-height: 1.45;
   outline: none;
   overflow-wrap: anywhere;
   white-space: pre-wrap;
   -webkit-user-select: text;
   user-select: text;
+}
+.tg-editor-surface b,
+.tg-editor-surface strong {
+  font-weight: 900;
 }
 .tg-editor-surface:focus {
   border-color: var(--accent);
