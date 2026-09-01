@@ -295,14 +295,14 @@ export async function nextIdeaNumber(env: Env): Promise<number> {
 export async function insertIdea(env: Env, input: NewIdeaInput, publicNumber: number): Promise<IdeaRow> {
   const now = Math.floor(Date.now() / 1000);
   const row = await env.DB.prepare(
-    `INSERT INTO ideas (
-       public_number, reporter_tg_id, reporter_username, reporter_display_name,
-       app, title, idea_type, what_i_want, why_useful, how_it_works, where_it_belongs,
-       user_flow, key_features, expected_experience, anything_to_avoid, notes,
-       status, created_at, updated_at
-     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, 'new', ?, ?)
-     RETURNING *`,
-  )
+	    `INSERT INTO ideas (
+	       public_number, reporter_tg_id, reporter_username, reporter_display_name,
+	       app, title, idea_type, what_i_want, why_useful, how_it_works, where_it_belongs,
+	       user_flow, key_features, expected_experience, anything_to_avoid, notes,
+	       status, created_at, updated_at
+	     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, 'new', ?, ?)
+	     RETURNING *`,
+	  )
     .bind(
       publicNumber,
       input.reporter_tg_id,
