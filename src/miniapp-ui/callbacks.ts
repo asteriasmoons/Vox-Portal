@@ -45,6 +45,14 @@ interface CallbackInteraction {
   created_at: number;
 }
 
+interface CallbackGitHubDestination {
+  available: boolean;
+  label: string;
+  detail: string;
+  url: string | null;
+  error: string | null;
+}
+
 interface Recipient {
   telegram_user_id: number;
   private_chat_id: number | null;
@@ -53,6 +61,7 @@ interface Recipient {
 
 let currentId: number | null = null;
 let currentRecipients: Recipient[] = [];
+let currentGitHubDestination: CallbackGitHubDestination | null = null;
 let followupEditor: TelegramMessageEditor | null = null;
 let manualEditor: TelegramMessageEditor | null = null;
 
@@ -151,9 +160,10 @@ async function openCallbackDetail(id: number): Promise<void> {
       record?: CallbackRecord;
       interactions?: CallbackInteraction[];
       recipients?: Recipient[];
+      github_destination?: CallbackGitHubDestination | null;
     };
     if (!res.ok || !data.ok || !data.record) throw new Error("detail");
-    renderDetail(data.record, data.interactions ?? [], data.recipients ?? []);
+    renderDetail(data.record, data.interactions ?? [], data.recipients ?? [], data.github_destination ?? null);
     loading.classList.add("hidden");
     content.classList.remove("hidden");
   } catch {
@@ -161,8 +171,14 @@ async function openCallbackDetail(id: number): Promise<void> {
   }
 }
 
-function renderDetail(record: CallbackRecord, interactions: CallbackInteraction[], recipients: Recipient[]): void {
+function renderDetail(
+  record: CallbackRecord,
+  interactions: CallbackInteraction[],
+  recipients: Recipient[],
+  githubDestination: CallbackGitHubDestination | null,
+): void {
   currentRecipients = recipients;
+  currentGitHubDestination = githubDestination;
   setText("#callback-button-label", record.button_label);
   setText("#callback-source-title", record.source_title || record.source_public_id || "Published Rich Message");
   setText("#callback-source-meta", [record.source_public_id, record.app, record.source_kind].filter(Boolean).join(" · "));
@@ -185,6 +201,7 @@ function renderDetail(record: CallbackRecord, interactions: CallbackInteraction[
   setText("#callback-save-feedback", "");
   setText("#callback-send-feedback", "");
   manualEditor?.clear();
+  renderManualDestinationOptions(record, githubDestination);
   renderRecipients();
   renderInteractions(interactions);
 }
@@ -211,7 +228,48 @@ function renderRecipients(): void {
 function syncRecipientVisibility(): void {
   const destination = requireEl<HTMLSelectElement>("#callback-manual-destination").value;
   const label = requireEl<HTMLElement>("#callback-recipient-label");
+  const info = requireEl<HTMLElement>("#callback-manual-destination-info");
   label.classList.toggle("hidden", destination !== "dm");
+  if (destination === "github") {
+    const target = currentGitHubDestination;
+    info.textContent = target
+      ? target.available
+        ? [target.label, target.detail, target.url].filter(Boolean).join(" · ")
+        : target.detail
+      : "No GitHub destination is available for this callback.";
+    info.classList.toggle("callback-error", !!target && !target.available);
+  } else if (destination === "channel") {
+    info.textContent = "Uses the saved channel/comment context for this callback.";
+    info.classList.remove("callback-error");
+  } else {
+    info.textContent = "";
+    info.classList.remove("callback-error");
+  }
+}
+
+function renderManualDestinationOptions(
+  record: CallbackRecord,
+  githubDestination: CallbackGitHubDestination | null,
+): void {
+  const select = requireEl<HTMLSelectElement>("#callback-manual-destination");
+  const previous = select.value || "dm";
+  select.innerHTML = "";
+  select.appendChild(destinationOption("dm", "DM"));
+  select.appendChild(destinationOption("channel", "Channel"));
+  if (githubDestination && ["bug", "idea", "beta"].includes(record.source_kind)) {
+    select.appendChild(destinationOption("github", githubDestination.label, !githubDestination.available));
+  }
+  const canKeepPrevious = Array.from(select.options).some((opt) => opt.value === previous && !opt.disabled);
+  select.value = canKeepPrevious ? previous : "dm";
+  syncRecipientVisibility();
+}
+
+function destinationOption(value: ManualDestination, label: string, disabled = false): HTMLOptionElement {
+  const opt = document.createElement("option");
+  opt.value = value;
+  opt.textContent = label;
+  opt.disabled = disabled;
+  return opt;
 }
 
 function renderInteractions(interactions: CallbackInteraction[]): void {
@@ -325,11 +383,18 @@ async function sendCurrentUpdate(): Promise<void> {
         message_doc: message.doc,
       }),
     });
-    const data = await res.json() as { ok: boolean; error?: string; record?: CallbackRecord; interactions?: CallbackInteraction[]; recipients?: Recipient[] };
+    const data = await res.json() as {
+      ok: boolean;
+      error?: string;
+      record?: CallbackRecord;
+      interactions?: CallbackInteraction[];
+      recipients?: Recipient[];
+      github_destination?: CallbackGitHubDestination | null;
+    };
     if (!res.ok || !data.ok || !data.record) throw new Error(data.error ?? "send");
     feedback.textContent = "Sent.";
     haptic("success");
-    renderDetail(data.record, data.interactions ?? [], data.recipients ?? []);
+    renderDetail(data.record, data.interactions ?? [], data.recipients ?? [], data.github_destination ?? currentGitHubDestination);
   } catch (e) {
     feedback.textContent = e instanceof Error ? e.message : "Couldn't send.";
     haptic("error");

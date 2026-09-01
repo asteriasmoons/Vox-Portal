@@ -64,6 +64,14 @@ export interface CallbackInteraction {
   created_at: number;
 }
 
+export interface CallbackGitHubDestination {
+  available: boolean;
+  label: string;
+  detail: string;
+  url: string | null;
+  error: string | null;
+}
+
 export interface CallbackSourceContext {
   source_kind: CallbackSourceKind;
   source_id: number | null;
@@ -300,9 +308,10 @@ export async function getCallbackDetail(env: Env, id: number): Promise<{
   record: CallbackRecord | null;
   interactions: CallbackInteraction[];
   recipients: { telegram_user_id: number; label: string; private_chat_id: number | null }[];
+  github_destination: CallbackGitHubDestination | null;
 }> {
   const record = await getCallbackRecord(env, id);
-  if (!record) return { record: null, interactions: [], recipients: [] };
+  if (!record) return { record: null, interactions: [], recipients: [], github_destination: null };
   const interactions = (await env.DB.prepare(
     `SELECT * FROM callback_interactions
      WHERE callback_id = ?
@@ -320,7 +329,12 @@ export async function getCallbackDetail(env: Env, id: number): Promise<{
       label: displayTelegramUser(item),
     });
   }
-  return { record, interactions, recipients };
+  return {
+    record,
+    interactions,
+    recipients,
+    github_destination: await resolveGitHubDestination(env, record),
+  };
 }
 
 export async function updateCallbackConfig(
@@ -771,6 +785,9 @@ async function sendGitHubCallbackUpdate(
     if (record.source_kind === "bug" && record.source_id) {
       const bug = await env.DB.prepare(`SELECT * FROM bugs WHERE id = ?`).bind(record.source_id).first<BugRow>();
       if (!bug) return failedDelivery("missing_bug");
+      if (!bug.github_repo || !bug.github_sub_issue_number || !bug.github_sub_issue_url) {
+        return failedDelivery("missing_github_sub_issue");
+      }
       const result = await postIssueComment(env, bug, body);
       return result.ok ? sentDelivery() : failedDelivery("error" in result ? result.error : result.skipped);
     }
@@ -795,6 +812,68 @@ async function sendGitHubCallbackUpdate(
     log.warn("callback_github_update_failed", { callbackId: record.id, err });
     return failedDelivery(err);
   }
+}
+
+async function resolveGitHubDestination(env: Env, record: CallbackRecord): Promise<CallbackGitHubDestination | null> {
+  if (record.source_kind === "bug") {
+    if (!record.source_id) return unavailableGitHubDestination("GitHub Sub-Issue Comments", "Missing linked bug report.");
+    const bug = await env.DB.prepare(`SELECT * FROM bugs WHERE id = ?`).bind(record.source_id).first<BugRow>();
+    if (!bug) return unavailableGitHubDestination("GitHub Sub-Issue Comments", "Linked bug report was not found.");
+    if (!bug.github_repo || !bug.github_sub_issue_number || !bug.github_sub_issue_url) {
+      return unavailableGitHubDestination("GitHub Sub-Issue Comments", "This bug does not have a stored GitHub sub-issue yet.");
+    }
+    return {
+      available: true,
+      label: "GitHub Sub-Issue Comments",
+      detail: `${bug.github_repo}#${bug.github_sub_issue_number}`,
+      url: bug.github_sub_issue_url,
+      error: null,
+    };
+  }
+
+  if (record.source_kind === "idea") {
+    if (!record.source_id) return unavailableGitHubDestination("GitHub Idea Comment Reply", "Missing linked idea submission.");
+    const idea = await env.DB.prepare(`SELECT * FROM ideas WHERE id = ?`).bind(record.source_id).first<IdeaRow>();
+    if (!idea) return unavailableGitHubDestination("GitHub Idea Comment Reply", "Linked idea submission was not found.");
+    if (!idea.github_repo || !idea.github_discussion_id || !idea.github_comment_id || !idea.github_comment_url) {
+      return unavailableGitHubDestination("GitHub Idea Comment Reply", "This idea does not have a stored GitHub Discussion comment yet.");
+    }
+    return {
+      available: true,
+      label: "GitHub Idea Comment Reply",
+      detail: `${idea.github_repo} · reply to ${ideaPublicId(idea)}`,
+      url: idea.github_comment_url,
+      error: null,
+    };
+  }
+
+  if (record.source_kind === "beta") {
+    if (!record.source_id) return unavailableGitHubDestination("GitHub Feedback Comment Reply", "Missing linked beta feedback submission.");
+    const beta = await env.DB.prepare(`SELECT * FROM beta_feedback WHERE id = ?`).bind(record.source_id).first<BetaFeedbackRow>();
+    if (!beta) return unavailableGitHubDestination("GitHub Feedback Comment Reply", "Linked beta feedback submission was not found.");
+    if (!beta.github_repo || !beta.github_discussion_id || !beta.github_comment_id || !beta.github_comment_url) {
+      return unavailableGitHubDestination("GitHub Feedback Comment Reply", "This feedback does not have a stored GitHub Discussion comment yet.");
+    }
+    return {
+      available: true,
+      label: "GitHub Feedback Comment Reply",
+      detail: `${beta.github_repo} · reply to ${betaFeedbackPublicId(beta)}`,
+      url: beta.github_comment_url,
+      error: null,
+    };
+  }
+
+  return null;
+}
+
+function unavailableGitHubDestination(label: string, error: string): CallbackGitHubDestination {
+  return {
+    available: false,
+    label,
+    detail: error,
+    url: null,
+    error,
+  };
 }
 
 function discussionTargetFromRow(row: IdeaRow | BetaFeedbackRow): DiscussionTarget {
