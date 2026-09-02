@@ -22,6 +22,7 @@ const ADMIN_GROUP_COMMANDS = [
   { command: "reason", description: "Add a reason to an idea decision" },
   { command: "case", description: "Assign a bug case by internal Work ID" },
   { command: "assign", description: "Assign an idea or feedback by internal Work ID" },
+  { command: "dismiss", description: "Dismiss an active assignment by internal Work ID" },
 ];
 
 export async function registerCommands(env: Env) {
@@ -31,7 +32,7 @@ export async function registerCommands(env: Env) {
 
 // Idempotent auto-registration triggered from the webhook. Bump
 // COMMANDS_VERSION to force existing bots to re-register.
-const COMMANDS_VERSION = "v5";
+const COMMANDS_VERSION = "v6";
 const COMMANDS_KEY = "meta:commands_registered";
 export async function ensureCommandsRegistered(env: Env) {
   try {
