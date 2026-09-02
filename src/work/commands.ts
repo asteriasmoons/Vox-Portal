@@ -132,21 +132,17 @@ function workCommentReplyOptions(
 ): { message_thread_id?: number; reply_parameters?: { message_id: number } } {
   const row = resolved.submission;
 
-  // Linked-channel comments are rooted at Telegram's automatic-forward mirror.
-  // Reply to that exact mirror, the same way the report itself is posted,
-  // instead of replying to the later rich-report message in the bare group.
-  const threadId = row.discussion_thread_id ?? row.discussion_message_id ?? null;
-  const rootMessageId = row.discussion_message_id ?? threadId;
-  if (threadId && rootMessageId) {
-    return {
-      message_thread_id: threadId,
-      reply_parameters: { message_id: rootMessageId },
-    };
-  }
-
-  return msg.reply_to_message?.message_id
-    ? { reply_parameters: { message_id: msg.reply_to_message.message_id } }
-    : commandReplyOptions(msg);
+  // Use the exact same linked-comment send shape as /reason.
+  return row.discussion_thread_id
+    ? {
+        message_thread_id: row.discussion_thread_id,
+        reply_parameters: {
+          message_id: row.report_message_id ?? row.discussion_message_id ?? row.discussion_thread_id,
+        },
+      }
+    : msg.reply_to_message?.message_id
+      ? { reply_parameters: { message_id: msg.reply_to_message.message_id } }
+      : commandReplyOptions(msg);
 }
 
 function commandUsage(cmd: WorkCommandName): string {
