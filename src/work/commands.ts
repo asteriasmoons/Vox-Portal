@@ -12,6 +12,7 @@ interface WorkCommandMessage {
   from?: { id: number; username?: string; first_name?: string; last_name?: string };
   sender_chat?: { id: number; type: string; title?: string; username?: string };
   message_thread_id?: number;
+  reply_to_message?: { message_id?: number; message_thread_id?: number; reply_to_message?: WorkCommandMessage["reply_to_message"] };
 }
 
 export function isWorkAssignmentCommand(cmd: string): cmd is WorkCommandName {
@@ -58,7 +59,7 @@ export async function handleWorkAssignmentCommand(
   if (!result.ok) {
     await sendMessage(
       env,
-      result.resolved ? discussionChatId(env) : msg.chat.id,
+      msg.chat.id,
       renderAssignmentError(cmd, result),
       { ...(result.resolved ? workCommentReplyOptions(result.resolved, msg) : threadOpts), parse_mode: "HTML" },
     );
@@ -67,7 +68,7 @@ export async function handleWorkAssignmentCommand(
 
   await sendMessage(
     env,
-    discussionChatId(env),
+    msg.chat.id,
     renderAssignmentConfirmation(cmd, result),
     { ...workCommentReplyOptions(result.resolved, msg), parse_mode: "HTML" },
   );
@@ -147,7 +148,9 @@ function workCommentReplyOptions(
     };
   }
   if (rootMessageId) return { reply_parameters: { message_id: rootMessageId } };
-  return commandReplyOptions(msg);
+  return msg.reply_to_message?.message_id
+    ? { reply_parameters: { message_id: msg.reply_to_message.message_id } }
+    : commandReplyOptions(msg);
 }
 
 function configuredInternalChatIds(env: Env): Set<number> {
