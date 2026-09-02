@@ -62,7 +62,11 @@ export async function dispatchUpdate(env: Env, update: Update): Promise<void> {
       await onMessage(env, update.message);
       return;
     }
-    // channel_post and other update types are not otherwise processed.
+    if (update.channel_post) {
+      await onMessage(env, update.channel_post);
+      return;
+    }
+    // Other update types are not otherwise processed.
   } catch (e) {
     log.error("dispatch_failed", e, { update_id: update.update_id });
   }

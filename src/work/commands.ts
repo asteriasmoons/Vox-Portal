@@ -1,14 +1,16 @@
 import type { Env } from "../config";
-import { isAdmin } from "../config";
+import { channelId, discussionChatId, isAdmin } from "../config";
 import { sendMessage } from "../telegram/api";
-import { assignWork, isWorkIdFormat, type AssignmentEventType } from "./service";
+import { assignWork, isWorkIdFormat } from "./service";
 import { esc } from "../util/html";
 
 type WorkCommandName = "case" | "assign";
 
 interface WorkCommandMessage {
-  chat: { id: number; type?: string };
+  message_id?: number;
+  chat: { id: number; type?: string; title?: string; username?: string };
   from?: { id: number; username?: string; first_name?: string; last_name?: string };
+  sender_chat?: { id: number; type: string; title?: string; username?: string };
   message_thread_id?: number;
 }
 
@@ -22,14 +24,15 @@ export async function handleWorkAssignmentCommand(
   cmd: WorkCommandName,
   args: string,
 ): Promise<boolean> {
-  const threadOpts = msg.message_thread_id ? { message_thread_id: msg.message_thread_id } : {};
-  if (!msg.from || !isAdmin(env, msg.from.id)) {
+  const threadOpts = commandReplyOptions(msg);
+  const authorized = isAuthorizedWorkCommand(env, msg);
+  if (!authorized) {
     await sendMessage(env, msg.chat.id, "This command is admin-only.", threadOpts);
     return true;
   }
 
   const usage = commandUsage(cmd);
-  const parsed = parseAssignmentArgs(args);
+  const parsed = parseAssignmentArgs(args, env.BOT_USERNAME, msg.from?.username);
   if (!parsed) {
     await sendMessage(env, msg.chat.id, usage, { ...threadOpts, parse_mode: "HTML" });
     return true;
@@ -44,13 +47,12 @@ export async function handleWorkAssignmentCommand(
   }
 
   const result = await assignWork(env, {
-    expected_type: cmd === "case" ? "bug" : "idea",
+    expected_types: cmd === "case" ? ["bug"] : ["idea", "beta"],
     work_id: parsed.workId,
     assigned_username: parsed.username,
-    assigned_by: msg.from.id,
-    assigned_by_username: msg.from.username ?? msg.from.first_name ?? null,
+    assigned_by: msg.from?.id ?? 0,
+    assigned_by_username: msg.from?.username ?? msg.from?.first_name ?? msg.sender_chat?.username ?? msg.sender_chat?.title ?? null,
     note: parsed.note,
-    event_type: commandEventType(cmd),
   });
 
   if (!result.ok) {
@@ -65,24 +67,73 @@ export async function handleWorkAssignmentCommand(
   return true;
 }
 
-function parseAssignmentArgs(args: string): { username: string; workId: string; note: string } | null {
-  const match = args.trim().match(/^(@[A-Za-z0-9_]{5,32})\s+([A-Za-z0-9]{6})\s+([\s\S]+)$/);
-  if (!match) return null;
-  const note = match[3].trim();
+function parseAssignmentArgs(
+  args: string,
+  botUsername: string,
+  callerUsername?: string,
+): { username: string; workId: string; note: string } | null {
+  const botMention = normalizeMention(botUsername);
+  let normalized = args.trim();
+  if (botMention && normalized.toLowerCase().startsWith(`${botMention.toLowerCase()} `)) {
+    normalized = normalized.slice(botMention.length).trim();
+  }
+
+  let match = normalized.match(/^(@[A-Za-z0-9_]{5,32})\s+([A-Za-z0-9]{6})\s+([\s\S]+)$/);
+  if (match) {
+    const note = match[3].trim();
+    if (!note) return null;
+    return {
+      username: match[1],
+      workId: match[2].toUpperCase(),
+      note,
+    };
+  }
+
+  match = normalized.match(/^([A-Za-z0-9]{6})\s+([\s\S]+)$/);
+  const note = match?.[2]?.trim() ?? "";
+  if (!match || !note || !callerUsername) return null;
+  const username = normalizeMention(callerUsername);
+  if (!username) return null;
   if (!note) return null;
   return {
-    username: match[1],
-    workId: match[2].toUpperCase(),
+    username,
+    workId: match[1].toUpperCase(),
     note,
   };
+}
+
+function normalizeMention(value: string | undefined | null): string {
+  const clean = (value ?? "").trim().replace(/^@/, "");
+  return clean ? `@${clean}` : "";
 }
 
 function isTelegramUsername(value: string): boolean {
   return /^@[A-Za-z0-9_]{5,32}$/.test(value);
 }
 
-function commandEventType(cmd: WorkCommandName): AssignmentEventType {
-  return cmd === "case" ? "case_assigned" : "idea_assigned";
+function isAuthorizedWorkCommand(env: Env, msg: WorkCommandMessage): boolean {
+  if (msg.from && isAdmin(env, msg.from.id)) return true;
+  const senderChatId = msg.sender_chat?.id;
+  if (!senderChatId) return false;
+  const chatId = msg.chat.id;
+  const configured = configuredInternalChatIds(env);
+  if (configured.has(chatId) || configured.has(senderChatId)) return true;
+  return msg.chat.type !== "private" && senderChatId === chatId;
+}
+
+function commandReplyOptions(msg: WorkCommandMessage): { message_thread_id?: number; reply_parameters?: { message_id: number } } {
+  if (msg.message_thread_id) return { message_thread_id: msg.message_thread_id };
+  if (msg.message_id) return { reply_parameters: { message_id: msg.message_id } };
+  return {};
+}
+
+function configuredInternalChatIds(env: Env): Set<number> {
+  const ids = new Set<number>([channelId(env), discussionChatId(env)]);
+  for (const raw of (env.JOIN_APPROVAL_CHAT_IDS ?? "").split(",")) {
+    const id = Number(raw.trim());
+    if (Number.isFinite(id)) ids.add(id);
+  }
+  return ids;
 }
 
 function commandUsage(cmd: WorkCommandName): string {
@@ -108,7 +159,11 @@ function renderAssignmentConfirmation(
   cmd: WorkCommandName,
   result: Extract<Awaited<ReturnType<typeof assignWork>>, { ok: true }>,
 ): string {
-  const title = cmd === "case" ? "✅ Case Assigned" : "✅ Idea Assigned";
+  const title = cmd === "case"
+    ? "✅ Case Assigned"
+    : result.resolved.submission_type === "beta"
+    ? "✅ Feedback Assigned"
+    : "✅ Idea Assigned";
   return [
     `<b>${title}</b>`,
     "",
@@ -130,7 +185,7 @@ function renderAssignmentError(
     case "not_found":
       return "That Work ID does not exist.";
     case "wrong_type": {
-      const expected = cmd === "case" ? "Bug Report" : "Idea";
+      const expected = cmd === "case" ? "Bug Report" : "Idea or Beta Feedback";
       const actual = result.resolved?.submission_type === "bug"
         ? "Bug Report"
         : result.resolved?.submission_type === "idea"

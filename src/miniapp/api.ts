@@ -24,7 +24,7 @@ import { BETA_FEEDBACK_TYPE_IDS, BETA_FEEDBACK_TYPES, BETA_OVERALL_EXPERIENCE_ID
 import { IDEA_TYPE_IDS, IDEA_TYPES, ideaTypeLabel } from "../ideas/constants";
 import { listBugsByReporter, getBug, listAttachments, getAttachment, setAttachmentPostedMessage, setBugTelegramLinkage, listBetaFeedbackByReporter, getBetaFeedback, listBetaFeedbackAttachments, getBetaFeedbackAttachment } from "../db/queries";
 import { publicIdOf } from "../bugs/formatting";
-import { getWorkRefBySubmission, listWorkHistory, type WorkHistoryFilters } from "../work/service";
+import { getWorkRefBySubmission, listWorkHistory, sendWorkReporterUpdate, type WorkHistoryFilters } from "../work/service";
 import { log } from "../util/log";
 
 const MAX_ATTACHMENTS = 10;
@@ -912,6 +912,46 @@ export async function handleWorkHistory(env: Env, req: Request): Promise<Respons
     log.error("work_history_failed", e, { user_id: user.id });
     return json({ ok: false, error: "server" }, { status: 500 });
   }
+}
+
+export async function handleSendWorkReporterUpdate(env: Env, req: Request): Promise<Response> {
+  const initData = req.headers.get("x-telegram-init-data") ?? "";
+  let user;
+  try { ({ user } = await validateInitData(env, initData)); }
+  catch { return json({ ok: false, error: "auth" }, { status: 401 }); }
+  if (!isAdmin(env, user.id)) return json({ ok: false, error: "forbidden" }, { status: 403 });
+
+  let payload: unknown;
+  try { payload = await req.json(); }
+  catch { return badRequest("invalid JSON"); }
+  const p = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
+  const work_id = typeof p.work_id === "string" ? p.work_id : "";
+  const message = typeof p.message === "string" ? p.message : "";
+  const message_html = typeof p.message_html === "string" ? p.message_html : null;
+  const message_doc = typeof p.message_doc === "string" ? p.message_doc : null;
+
+  const result = await sendWorkReporterUpdate(env, {
+    work_id,
+    message,
+    message_html,
+    message_doc,
+    sent_by_tg_id: user.id,
+    sent_by_username: user.username ?? user.first_name ?? null,
+  });
+  if (!result.ok) {
+    const status = result.error === "bad_work_id" || result.error === "message_required"
+      ? 400
+      : result.error === "not_found"
+      ? 404
+      : 502;
+    return json({ ok: false, error: result.error }, { status });
+  }
+  return json({
+    ok: true,
+    public_id: result.resolved.public_id,
+    work_id: result.resolved.work_ref.work_id,
+    message_id: result.message_id,
+  });
 }
 
 export async function handleCallbackDetail(env: Env, req: Request, id: number): Promise<Response> {

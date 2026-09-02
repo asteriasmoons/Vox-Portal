@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Work · Vox Bugs</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body data-page="work">
+    <div id="tg-safe-top" aria-hidden="true"></div>
+    <main id="app">
+      <header class="hdr">
+        <h1 class="page-title">Work</h1>
+        <p class="sub">Manage internal assignments and send reporter updates.</p>
+      </header>
+
+      <section id="work-list-panel">
+        <section class="card work-history-filters" aria-label="Work filters">
+          <input id="work-history-search" type="search" placeholder="Search ID, Work ID, username, note" autocomplete="off" />
+          <div class="work-filter-grid">
+            <select id="work-history-type" aria-label="Submission type">
+              <option value="">All Types</option>
+              <option value="bug">Bug Reports</option>
+              <option value="idea">Ideas</option>
+              <option value="beta">Beta Feedback</option>
+            </select>
+            <select id="work-history-app" aria-label="App">
+              <option value="">All Apps</option>
+            </select>
+            <select id="work-history-assignee" aria-label="Assignee">
+              <option value="">All Assignees</option>
+            </select>
+            <select id="work-history-event" aria-label="Activity">
+              <option value="">All Activity</option>
+            </select>
+            <select id="work-history-state" aria-label="State">
+              <option value="">All States</option>
+              <option value="active">Active</option>
+              <option value="completed">Completed</option>
+              <option value="released">Released</option>
+              <option value="cancelled">Cancelled</option>
+            </select>
+          </div>
+        </section>
+
+        <section class="card work-command-help">
+          <h2>Commands</h2>
+          <p><b>/case</b> assigns Bug Reports. <b>/assign</b> assigns Ideas and Beta Feedback.</p>
+          <p class="hint">Use them in the bot DM, the configured channel, or the configured discussion group.</p>
+        </section>
+
+        <div id="work-history-empty" class="card empty hidden">
+          <p>No internal work activity yet.</p>
+        </div>
+        <div id="work-history-loading" class="card empty">Loading work…</div>
+        <ul id="work-history-list" class="history work-history-list hidden"></ul>
+      </section>
+
+      <section id="work-detail" class="history-detail hidden">
+        <button id="work-detail-back" class="detail-back" type="button">← Back to work</button>
+        <div class="detail-hero card">
+          <div class="detail-topline">
+            <span id="work-detail-public-id" class="detail-public-id"></span>
+            <span id="work-detail-state" class="status-pill"></span>
+          </div>
+          <h2 id="work-detail-title" class="detail-title"></h2>
+          <p id="work-detail-meta" class="detail-submitted"></p>
+        </div>
+
+        <section class="card detail-grid-card">
+          <h2>Assignment</h2>
+          <div class="detail-grid callbacks-grid">
+            <div><span>Work ID</span><strong id="work-detail-work-id"></strong></div>
+            <div><span>Type</span><strong id="work-detail-type"></strong></div>
+            <div><span>App</span><strong id="work-detail-app"></strong></div>
+            <div><span>Assignee</span><strong id="work-detail-assignee"></strong></div>
+            <div><span>Status</span><strong id="work-detail-status"></strong></div>
+            <div><span>Assigned</span><strong id="work-detail-created"></strong></div>
+          </div>
+          <p id="work-detail-note" class="work-note"></p>
+        </section>
+
+        <section class="card callback-editor-card">
+          <h2>Send Reporter Update</h2>
+          <div class="callback-message-field">
+            <label id="work-reporter-message-label">Message</label>
+            <div
+              id="work-reporter-message"
+              class="tg-message-editor"
+              aria-labelledby="work-reporter-message-label"
+              data-placeholder="Send a regular Telegram DM to the original reporter."
+            ></div>
+          </div>
+          <button id="work-send-reporter-update" class="primary" type="button">Send Update</button>
+          <p id="work-send-feedback" class="hint resubmit-feedback"></p>
+        </section>
+
+        <section class="card">
+          <h2>Work Activity</h2>
+          <ul id="work-related-activity" class="callback-interactions"></ul>
+        </section>
+      </section>
+    </main>
+
+    <nav id="nav" aria-label="Primary">
+      <a class="nav-btn" href="./index.html" style="--icon:url(/icons/home.svg)" aria-label="Home">
+        <img class="nav-glyph" src="/icons/home.svg" alt="" />
+        <span class="nav-label">Home</span>
+      </a>
+      <a class="nav-btn" href="./create.html" style="--icon:url(/icons/create.svg)" aria-label="Create">
+        <img class="nav-glyph" src="/icons/create.svg" alt="" />
+        <span class="nav-label">Create</span>
+      </a>
+      <a class="nav-btn active admin-only-nav hidden" href="./work.html" style="--icon:url(/icons/devtab.svg)" aria-label="Work" aria-current="page">
+        <img class="nav-glyph" src="/icons/devtab.svg" alt="" />
+        <span class="nav-label">Work</span>
+      </a>
+      <a class="nav-btn admin-only-nav hidden" href="./callbacks.html" style="--icon:url(/icons/starchat.svg)" aria-label="Callbacks">
+        <img class="nav-glyph" src="/icons/starchat.svg" alt="" />
+        <span class="nav-label">Callbacks</span>
+      </a>
+      <a class="nav-btn" href="./history.html" style="--icon:url(/icons/clockbook.svg)" aria-label="History">
+        <img class="nav-glyph" src="/icons/clockbook.svg" alt="" />
+        <span class="nav-label">History</span>
+      </a>
+    </nav>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>

@@ -9,6 +9,7 @@ import { initSteps } from "./steps";
 import { initIdeaPage } from "./idea";
 import { initBetaFeedbackPage } from "./beta";
 import { initCallbackDetailBack, loadCallbacks } from "./callbacks";
+import { initWorkCenter } from "./work";
 import { $ } from "./dom";
 import { showTopError, clearErrors } from "./ui";
 import { initTapToDismissTextFields } from "./webview";
@@ -61,6 +62,21 @@ if (page === "callbacks") {
       empty?.classList.remove("hidden");
       const emptyText = empty?.querySelector("p");
       if (emptyText) emptyText.textContent = "Callbacks are only available to admins.";
+    }
+  });
+}
+
+if (page === "work") {
+  void adminAccess.then((isAdmin) => {
+    if (isAdmin) {
+      initWorkCenter();
+    } else {
+      showTopError("Work is admin-only.");
+      $("#work-history-loading")?.classList.add("hidden");
+      const empty = $("#work-history-empty");
+      empty?.classList.remove("hidden");
+      const emptyText = empty?.querySelector("p");
+      if (emptyText) emptyText.textContent = "Work is only available to admins.";
     }
   });
 }

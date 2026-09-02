@@ -27,6 +27,7 @@ import {
   handleResubmitBug,
   handleResubmitIdea,
   handleSendCallbackUpdate,
+  handleSendWorkReporterUpdate,
   handleSubmit,
   handleSubmitBetaFeedback,
   handleSubmitIdea,
@@ -68,6 +69,7 @@ export default {
     if (url.pathname === "/api/submit-beta-feedback" && req.method === "POST") return handleSubmitBetaFeedback(env, req);
     if (url.pathname === "/api/mybugs" && req.method === "GET") return handleMyBugs(env, req);
     if (url.pathname === "/api/work-history" && req.method === "GET") return handleWorkHistory(env, req);
+    if (url.pathname === "/api/work/reporter-update" && req.method === "POST") return handleSendWorkReporterUpdate(env, req);
     if (url.pathname === "/api/callbacks" && req.method === "GET") return handleCallbacksList(env, req);
     const callbackMatch = url.pathname.match(/^\/api\/callbacks\/(\d+)$/);
     if (callbackMatch && req.method === "GET") return handleCallbackDetail(env, req, Number(callbackMatch[1]));

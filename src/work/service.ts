@@ -18,6 +18,7 @@ const WORK_ID_PATTERN = /^[23456789ABCDEFGHJKMNPQRSTUVWXYZ]{6}$/;
 const MAX_WORK_ID_ATTEMPTS = 32;
 
 export type AssignmentEventType = "case_assigned" | "idea_assigned";
+export type WorkAssignmentEventType = AssignmentEventType | "beta_assigned";
 
 export interface ResolvedWorkRef {
   work_ref: WorkRefRow;
@@ -31,6 +32,7 @@ export interface ResolvedWorkRef {
 
 export interface WorkHistoryEntry {
   id: number;
+  assignment_id: number | null;
   event_type: string;
   submission_type: WorkSubmissionType;
   submission_record_id: number;
@@ -44,6 +46,9 @@ export interface WorkHistoryEntry {
   assigned_by: number | null;
   assigned_by_username: string | null;
   note: string | null;
+  message: string | null;
+  delivery_status: string | null;
+  delivery_error: string | null;
   actor_telegram_id: number | null;
   actor_username: string | null;
   created_at: number;
@@ -117,13 +122,14 @@ export async function resolveWorkId(env: Env, workId: string): Promise<ResolvedW
 export async function assignWork(
   env: Env,
   input: {
-    expected_type: "bug" | "idea";
+    expected_type?: WorkSubmissionType;
+    expected_types?: WorkSubmissionType[];
     work_id: string;
     assigned_username: string;
     assigned_by: number;
     assigned_by_username?: string | null;
     note: string;
-    event_type: AssignmentEventType;
+    event_type?: WorkAssignmentEventType;
   },
 ): Promise<
   | { ok: true; resolved: ResolvedWorkRef; assignment: WorkAssignmentRow }
@@ -133,7 +139,10 @@ export async function assignWork(
   if (!isWorkIdFormat(workId)) return { ok: false, error: "bad_work_id" };
   const resolved = await resolveWorkId(env, workId);
   if (!resolved) return { ok: false, error: "not_found" };
-  if (resolved.submission_type !== input.expected_type) return { ok: false, error: "wrong_type", resolved };
+  const expectedTypes = input.expected_types ?? (input.expected_type ? [input.expected_type] : []);
+  if (expectedTypes.length && !expectedTypes.includes(resolved.submission_type)) {
+    return { ok: false, error: "wrong_type", resolved };
+  }
 
   const active = await getActiveAssignment(env, resolved.work_ref.id);
   if (active) return { ok: false, error: "already_assigned", resolved, assignment: active };
@@ -171,7 +180,7 @@ export async function assignWork(
        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     )
       .bind(
-        input.event_type,
+        input.event_type ?? assignmentEventType(resolved.submission_type),
         resolved.submission_type,
         resolved.work_ref.submission_record_id,
         resolved.work_ref.id,
@@ -194,6 +203,79 @@ export async function assignWork(
     if (activeAfterRace) return { ok: false, error: "already_assigned", resolved, assignment: activeAfterRace };
     return { ok: false, error: "database", resolved };
   }
+}
+
+export async function sendWorkReporterUpdate(
+  env: Env,
+  input: {
+    work_id: string;
+    message: string;
+    message_html?: string | null;
+    message_doc?: string | null;
+    sent_by_tg_id: number;
+    sent_by_username?: string | null;
+  },
+): Promise<
+  | { ok: true; resolved: ResolvedWorkRef; message_id: number | null }
+  | { ok: false; error: "bad_work_id" | "not_found" | "message_required" | "send_failed"; resolved?: ResolvedWorkRef }
+> {
+  const workId = input.work_id.trim().toUpperCase();
+  if (!isWorkIdFormat(workId)) return { ok: false, error: "bad_work_id" };
+  const resolved = await resolveWorkId(env, workId);
+  if (!resolved) return { ok: false, error: "not_found" };
+
+  const message = input.message.trim().slice(0, 3900);
+  if (!message) return { ok: false, error: "message_required", resolved };
+
+  const html = [
+    `<b>${escapeTelegramHtml(resolved.public_id)} Update</b>`,
+    escapeTelegramHtml(workTitle(resolved.submission)),
+    "",
+    (input.message_html?.trim() || escapeTelegramHtml(message)).slice(0, 3900),
+  ].filter(Boolean).join("\n");
+
+  const now = unixNow();
+  let messageId: number | null = null;
+  let deliveryStatus = "sent";
+  let deliveryError: string | null = null;
+  try {
+    const { sendMessage } = await import("../telegram/api");
+    const sent = await sendMessage(env, reporterTelegramId(resolved.submission), html, { parse_mode: "HTML" });
+    messageId = sent.message_id ?? null;
+  } catch (e) {
+    deliveryStatus = "failed";
+    deliveryError = e instanceof Error ? e.message : String(e);
+  }
+
+  await env.DB.prepare(
+    `INSERT INTO work_history (
+       event_type, submission_type, submission_record_id, work_ref_id,
+       assignment_id, actor_telegram_id, actor_username, metadata, created_at
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  )
+    .bind(
+      "reporter_update_sent",
+      resolved.submission_type,
+      resolved.work_ref.submission_record_id,
+      resolved.work_ref.id,
+      resolved.assignment?.id ?? null,
+      input.sent_by_tg_id,
+      input.sent_by_username ?? null,
+      JSON.stringify({
+        public_id: resolved.public_id,
+        message,
+        message_html: input.message_html ?? null,
+        message_doc: input.message_doc ?? null,
+        delivery_status: deliveryStatus,
+        delivery_error: deliveryError,
+        response_message_id: messageId,
+      }),
+      now,
+    )
+    .run();
+
+  if (deliveryStatus !== "sent") return { ok: false, error: "send_failed", resolved };
+  return { ok: true, resolved, message_id: messageId };
 }
 
 export async function listWorkHistory(
@@ -221,6 +303,7 @@ export async function listWorkHistory(
     const meta = parseMetadata(row.metadata);
     const entry: WorkHistoryEntry = {
       id: row.id,
+      assignment_id: row.assignment_id,
       event_type: row.event_type,
       submission_type: row.submission_type,
       submission_record_id: row.submission_record_id,
@@ -234,6 +317,9 @@ export async function listWorkHistory(
       assigned_by: assignment?.assigned_by ?? row.actor_telegram_id,
       assigned_by_username: assignment?.assigned_by_username ?? row.actor_username,
       note: assignment?.note ?? stringOrNull(meta.note),
+      message: stringOrNull(meta.message),
+      delivery_status: stringOrNull(meta.delivery_status),
+      delivery_error: stringOrNull(meta.delivery_error),
       actor_telegram_id: row.actor_telegram_id,
       actor_username: row.actor_username,
       created_at: row.created_at,
@@ -275,6 +361,28 @@ function publicId(row: BugRow | IdeaRow | BetaFeedbackRow, type: WorkSubmissionT
   if (type === "bug") return publicIdOf(row as BugRow);
   if (type === "idea") return ideaPublicId(row as IdeaRow);
   return betaFeedbackPublicId(row as BetaFeedbackRow);
+}
+
+function assignmentEventType(type: WorkSubmissionType): WorkAssignmentEventType {
+  if (type === "bug") return "case_assigned";
+  if (type === "idea") return "idea_assigned";
+  return "beta_assigned";
+}
+
+function reporterTelegramId(row: BugRow | IdeaRow | BetaFeedbackRow): number {
+  return row.reporter_tg_id;
+}
+
+function workTitle(row: BugRow | IdeaRow | BetaFeedbackRow): string {
+  if ("title" in row) return row.title;
+  return row.testing;
+}
+
+function escapeTelegramHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 function generateWorkId(): string {

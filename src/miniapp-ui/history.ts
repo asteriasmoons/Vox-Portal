@@ -159,11 +159,12 @@ export async function loadHistory(): Promise<void> {
 }
 
 function setupHistoryModeSwitch(isAdmin: boolean): void {
-  const switcher = requireEl("#history-mode-switch");
-  const postsTab = requireEl<HTMLButtonElement>("#posts-history-tab");
-  const workTab = requireEl<HTMLButtonElement>("#work-history-tab");
-  const postsPanel = requireEl("#posts-history-panel");
-  const workPanel = requireEl("#work-history-panel");
+  const switcher = document.getElementById("history-mode-switch");
+  const postsTab = document.getElementById("posts-history-tab") as HTMLButtonElement | null;
+  const workTab = document.getElementById("work-history-tab") as HTMLButtonElement | null;
+  const postsPanel = document.getElementById("posts-history-panel");
+  const workPanel = document.getElementById("work-history-panel");
+  if (!switcher || !postsTab || !workTab || !postsPanel || !workPanel) return;
   switcher.classList.toggle("hidden", !isAdmin);
   if (!isAdmin) {
     postsPanel.classList.remove("hidden");

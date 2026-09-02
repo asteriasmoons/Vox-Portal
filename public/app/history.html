@@ -12,13 +12,8 @@
     <main id="app">
       <header class="hdr">
         <h1 class="page-title">History</h1>
-        <p class="sub">Review submitted posts and internal Deviverse work activity.</p>
+        <p class="sub">Review submitted posts.</p>
       </header>
-
-      <div id="history-mode-switch" class="history-mode-switch hidden" role="tablist" aria-label="History type">
-        <button id="posts-history-tab" class="history-mode active" type="button" aria-selected="true">Posts History</button>
-        <button id="work-history-tab" class="history-mode" type="button" aria-selected="false">Work History</button>
-      </div>
 
       <section id="posts-history-panel">
         <div id="history-empty" class="card empty hidden">
@@ -27,41 +22,6 @@
         </div>
         <div id="history-loading" class="card empty">Loading…</div>
         <ul id="history-list" class="history hidden"></ul>
-      </section>
-
-      <section id="work-history-panel" class="hidden">
-        <section class="card work-history-filters" aria-label="Work History filters">
-          <input id="work-history-search" type="search" placeholder="Search ID, Work ID, username, note" autocomplete="off" />
-          <div class="work-filter-grid">
-            <select id="work-history-type" aria-label="Submission type">
-              <option value="">All Types</option>
-              <option value="bug">Bug Reports</option>
-              <option value="idea">Ideas</option>
-              <option value="beta">Beta Feedback</option>
-            </select>
-            <select id="work-history-app" aria-label="App">
-              <option value="">All Apps</option>
-            </select>
-            <select id="work-history-assignee" aria-label="Assignee">
-              <option value="">All Assignees</option>
-            </select>
-            <select id="work-history-event" aria-label="Activity">
-              <option value="">All Activity</option>
-            </select>
-            <select id="work-history-state" aria-label="State">
-              <option value="">All States</option>
-              <option value="active">Active</option>
-              <option value="completed">Completed</option>
-              <option value="released">Released</option>
-              <option value="cancelled">Cancelled</option>
-            </select>
-          </div>
-        </section>
-        <div id="work-history-empty" class="card empty hidden">
-          <p>No internal work activity yet.</p>
-        </div>
-        <div id="work-history-loading" class="card empty hidden">Loading work history…</div>
-        <ul id="work-history-list" class="history work-history-list hidden"></ul>
       </section>
 
       <section id="history-detail" class="history-detail hidden">
@@ -123,6 +83,10 @@
       <a class="nav-btn" href="./create.html" style="--icon:url(/icons/create.svg)" aria-label="Report a bug">
         <img class="nav-glyph" src="/icons/create.svg" alt="" />
         <span class="nav-label">Create</span>
+      </a>
+      <a class="nav-btn admin-only-nav hidden" href="./work.html" style="--icon:url(/icons/devtab.svg)" aria-label="Work">
+        <img class="nav-glyph" src="/icons/devtab.svg" alt="" />
+        <span class="nav-label">Work</span>
       </a>
       <a class="nav-btn admin-only-nav hidden" href="./callbacks.html" style="--icon:url(/icons/starchat.svg)" aria-label="Callbacks">
         <img class="nav-glyph" src="/icons/starchat.svg" alt="" />
