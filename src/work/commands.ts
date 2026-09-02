@@ -88,23 +88,26 @@ function parseAssignmentArgs(
     normalized = normalized.slice(botMention.length).trim();
   }
 
-  let match = normalized.match(/^(@[A-Za-z0-9_]{5,32})\s+([A-Za-z0-9]{6})(?:\s+([\s\S]+))?$/);
+  let match = normalized.match(/^(@[A-Za-z0-9_]{5,32})\s+([A-Za-z0-9]{6})\s+([\s\S]+)$/);
   if (match) {
+    const note = match[3].trim();
+    if (!note) return null;
     return {
       username: match[1],
       workId: match[2].toUpperCase(),
-      note: (match[3] ?? "").trim(),
+      note,
     };
   }
 
-  match = normalized.match(/^([A-Za-z0-9]{6})(?:\s+([\s\S]+))?$/);
-  if (!match || !callerUsername) return null;
+  match = normalized.match(/^([A-Za-z0-9]{6})\s+([\s\S]+)$/);
+  const note = match?.[2]?.trim() ?? "";
+  if (!match || !note || !callerUsername) return null;
   const username = normalizeMention(callerUsername);
   if (!username) return null;
   return {
     username,
     workId: match[1].toUpperCase(),
-    note: (match[2] ?? "").trim(),
+    note,
   };
 }
 
@@ -150,18 +153,18 @@ function commandUsage(cmd: WorkCommandName): string {
   if (cmd === "case") {
     return [
       "<b>Usage:</b>",
-      "/case &lt;username&gt; &lt;workID&gt; [note]",
+      "/case &lt;username&gt; &lt;workID&gt; &lt;note&gt;",
       "",
       "<b>Example:</b>",
-      "/case @alex 7KQ3XM",
+      "/case @alex 7KQ3XM Investigating the reminder completion issue",
     ].join("\n");
   }
   return [
     "<b>Usage:</b>",
-    "/assign &lt;username&gt; &lt;workID&gt; [note]",
+    "/assign &lt;username&gt; &lt;workID&gt; &lt;note&gt;",
     "",
     "<b>Example:</b>",
-    "/assign @alex M4PX8C",
+    "/assign @alex M4PX8C Building this because I already work on this feature area",
   ].join("\n");
 }
 
@@ -181,8 +184,8 @@ function renderAssignmentConfirmation(
     `<blockquote>Work ID: ${esc(result.resolved.work_ref.work_id)}</blockquote>`,
     "",
     `Assigned to: ${esc(result.assignment.assigned_username)}`,
-    result.assignment.note ? `Note: ${esc(result.assignment.note)}` : null,
-  ].filter(Boolean).join("\n");
+    `Note: ${esc(result.assignment.note)}`,
+  ].join("\n");
 }
 
 function renderAssignmentError(
