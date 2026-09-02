@@ -1,7 +1,7 @@
 import type { Env } from "../config";
 import { discussionChatId, isAdmin } from "../config";
 import { sendMessage } from "../telegram/api";
-import { assignWork, isWorkIdFormat, type ResolvedWorkRef } from "./service";
+import { assignWork, isWorkIdFormat, resolveWorkId, type ResolvedWorkRef } from "./service";
 import { esc } from "../util/html";
 
 type WorkCommandName = "case" | "assign";
@@ -35,9 +35,16 @@ export async function handleWorkAssignmentCommand(
   if (!anonymousAdmin && !userAdmin) return false;
 
   const usage = commandUsage(cmd);
-  const parsed = parseAssignmentArgs(args, env.BOT_USERNAME, msg.from?.username);
+  const parsed = parseAssignmentArgs(args, msg.from?.username);
   if (!parsed) {
-    await sendMessage(env, msg.chat.id, usage, { ...threadOpts, parse_mode: "HTML" });
+    const workId = extractWorkIdFromIncompleteArgs(args);
+    const resolved = workId ? await resolveWorkId(env, workId) : null;
+    await sendMessage(
+      env,
+      msg.chat.id,
+      usage,
+      { ...(resolved ? workCommentReplyOptions(resolved, msg) : threadOpts), parse_mode: "HTML" },
+    );
     return true;
   }
   if (!isTelegramUsername(parsed.username)) {
@@ -79,15 +86,9 @@ export async function handleWorkAssignmentCommand(
 
 function parseAssignmentArgs(
   args: string,
-  botUsername: string,
   callerUsername?: string,
 ): { username: string; workId: string; note: string } | null {
-  const botMention = normalizeMention(botUsername);
-  let normalized = args.trim();
-  if (botMention && normalized.toLowerCase().startsWith(`${botMention.toLowerCase()} `)) {
-    normalized = normalized.slice(botMention.length).trim();
-  }
-
+  const normalized = args.trim();
   let match = normalized.match(/^(@[A-Za-z0-9_]{5,32})\s+([A-Za-z0-9]{6})\s+([\s\S]+)$/);
   if (match) {
     const note = match[3].trim();
@@ -109,6 +110,15 @@ function parseAssignmentArgs(
     workId: match[1].toUpperCase(),
     note,
   };
+}
+
+function extractWorkIdFromIncompleteArgs(args: string): string | null {
+  const tokens = args.trim().split(/\s+/).filter(Boolean);
+  for (const token of tokens) {
+    const candidate = token.toUpperCase();
+    if (isWorkIdFormat(candidate)) return candidate;
+  }
+  return null;
 }
 
 function normalizeMention(value: string | undefined | null): string {
