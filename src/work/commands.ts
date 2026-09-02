@@ -140,17 +140,42 @@ function workCommentReplyOptions(
   msg: WorkCommandMessage,
 ): { message_thread_id?: number; reply_parameters?: { message_id: number } } {
   const row = resolved.submission;
-  const rootMessageId = row.report_message_id ?? row.discussion_message_id ?? row.discussion_thread_id ?? null;
-  if (row.discussion_thread_id && rootMessageId) {
+  const candidateIds = collectCommentCandidateIds(msg);
+  let threadId: number | null = msg.message_thread_id ?? null;
+
+  for (const candidate of candidateIds) {
+    if (
+      candidate === row.discussion_thread_id ||
+      candidate === row.discussion_message_id ||
+      candidate === row.report_message_id
+    ) {
+      threadId = row.discussion_thread_id ?? candidate;
+      break;
+    }
+  }
+
+  threadId = row.discussion_thread_id ?? threadId;
+  const replyMessageId = row.report_message_id ?? row.discussion_message_id ?? threadId;
+  if (threadId && replyMessageId) {
     return {
-      message_thread_id: row.discussion_thread_id,
-      reply_parameters: { message_id: rootMessageId },
+      message_thread_id: threadId,
+      reply_parameters: { message_id: replyMessageId },
     };
   }
-  if (rootMessageId) return { reply_parameters: { message_id: rootMessageId } };
   return msg.reply_to_message?.message_id
     ? { reply_parameters: { message_id: msg.reply_to_message.message_id } }
     : commandReplyOptions(msg);
+}
+
+function collectCommentCandidateIds(msg: WorkCommandMessage): Set<number> {
+  const candidateIds = new Set<number>();
+  if (msg.message_thread_id) candidateIds.add(msg.message_thread_id);
+  let reply = msg.reply_to_message;
+  for (let depth = 0; reply && depth < 8; depth++, reply = reply.reply_to_message) {
+    if (reply.message_id) candidateIds.add(reply.message_id);
+    if (reply.message_thread_id) candidateIds.add(reply.message_thread_id);
+  }
+  return candidateIds;
 }
 
 function configuredInternalChatIds(env: Env): Set<number> {
