@@ -887,6 +887,7 @@ img.nav-glyph { content: ""; }
 .callbacks-list .callback-item .title { overflow-wrap: anywhere; }
 .callbacks-grid { grid-template-columns: 1fr; }
 .callbacks-grid > div:first-child { grid-column: 1 / -1; }
+.work-note-tile { grid-column: 1 / -1; }
 .callback-editor-card { display: grid; gap: 12px; }
 .callback-message-field > label {
   margin-bottom: 6px;
