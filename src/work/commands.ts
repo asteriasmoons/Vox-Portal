@@ -1,7 +1,7 @@
 import type { Env } from "../config";
 import { discussionChatId, isAdmin } from "../config";
 import { sendMessage } from "../telegram/api";
-import { assignWork, isWorkIdFormat, resolveWorkId, type ResolvedWorkRef } from "./service";
+import { assignWork, dismissWork, isWorkIdFormat, resolveWorkId, type ResolvedWorkRef } from "./service";
 import { esc } from "../util/html";
 
 type WorkCommandName = "case" | "assign";
@@ -17,6 +17,61 @@ interface WorkCommandMessage {
 
 export function isWorkAssignmentCommand(cmd: string): cmd is WorkCommandName {
   return cmd === "case" || cmd === "assign";
+}
+
+export async function handleWorkDismissCommand(
+  env: Env,
+  msg: WorkCommandMessage,
+  args: string,
+): Promise<boolean> {
+  const threadOpts = commandReplyOptions(msg);
+  const anonymousAdmin = msg.sender_chat?.id === discussionChatId(env);
+  const userAdmin = !!msg.from && isAdmin(env, msg.from.id);
+  if (!anonymousAdmin && !userAdmin) return false;
+
+  const workId = args.trim().toUpperCase();
+  if (!isWorkIdFormat(workId)) {
+    await sendMessage(env, msg.chat.id, "<b>Usage:</b>\n/dismiss &lt;workID&gt;", { ...threadOpts, parse_mode: "HTML" });
+    return true;
+  }
+
+  const result = await dismissWork(env, {
+    work_id: workId,
+    dismissed_by: msg.from?.id ?? 0,
+    dismissed_by_username: msg.from?.username ?? msg.from?.first_name ?? msg.sender_chat?.username ?? msg.sender_chat?.title ?? null,
+  });
+
+  if (!result.ok) {
+    const text = result.error === "not_found"
+      ? "That Work ID does not exist."
+      : result.error === "not_assigned"
+      ? "That submission does not currently have an active assignment."
+      : result.error === "bad_work_id"
+      ? "Work ID must be 6 characters using the internal Work ID format."
+      : "Couldn't dismiss the assignment. The database returned an error.";
+    await sendMessage(
+      env,
+      msg.chat.id,
+      text,
+      { ...(result.resolved ? workCommentReplyOptions(result.resolved, msg) : threadOpts), parse_mode: "HTML" },
+    );
+    return true;
+  }
+
+  await sendMessage(
+    env,
+    msg.chat.id,
+    [
+      "✅ <b>Assignment Dismissed</b>",
+      "",
+      `<b>${esc(result.resolved.public_id)}</b>`,
+      `<blockquote>Work ID: ${esc(result.resolved.work_ref.work_id)}</blockquote>`,
+      "",
+      `Removed assignment from: ${esc(result.assignment.assigned_username)}`,
+    ].join("\n"),
+    { ...workCommentReplyOptions(result.resolved, msg), parse_mode: "HTML" },
+  );
+  return true;
 }
 
 export async function handleWorkAssignmentCommand(

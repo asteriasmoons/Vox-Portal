@@ -547,6 +547,11 @@ export async function handleAdminGroupCommand(
     return await handleWorkAssignmentCommand(env, msg, cmd, args);
   }
 
+  if (cmd === "dismiss") {
+    const { handleWorkDismissCommand } = await import("../work/commands");
+    return await handleWorkDismissCommand(env, msg, args);
+  }
+
   // /reason is an idea-flow command; it doesn't need a matching bug row.
   // Handle it before the bug lookup so it works in idea threads too.
   if (cmd === "reason") return await handleReasonCommand(env, msg, args);

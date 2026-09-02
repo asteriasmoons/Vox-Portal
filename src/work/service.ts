@@ -205,6 +205,66 @@ export async function assignWork(
   }
 }
 
+export async function dismissWork(
+  env: Env,
+  input: {
+    work_id: string;
+    dismissed_by: number;
+    dismissed_by_username?: string | null;
+  },
+): Promise<
+  | { ok: true; resolved: ResolvedWorkRef; assignment: WorkAssignmentRow }
+  | { ok: false; error: "bad_work_id" | "not_found" | "not_assigned" | "database"; resolved?: ResolvedWorkRef }
+> {
+  const workId = input.work_id.trim().toUpperCase();
+  if (!isWorkIdFormat(workId)) return { ok: false, error: "bad_work_id" };
+  const resolved = await resolveWorkId(env, workId);
+  if (!resolved) return { ok: false, error: "not_found" };
+
+  const active = await getActiveAssignment(env, resolved.work_ref.id);
+  if (!active) return { ok: false, error: "not_assigned", resolved };
+
+  const now = unixNow();
+  try {
+    const assignment = await env.DB.prepare(
+      `UPDATE work_assignments
+       SET status = 'cancelled', ended_at = ?, updated_at = ?
+       WHERE id = ? AND status = 'active'
+       RETURNING *`,
+    )
+      .bind(now, now, active.id)
+      .first<WorkAssignmentRow>();
+    if (!assignment) return { ok: false, error: "not_assigned", resolved };
+
+    await env.DB.prepare(
+      `INSERT INTO work_history (
+         event_type, submission_type, submission_record_id, work_ref_id,
+         assignment_id, actor_telegram_id, actor_username, metadata, created_at
+       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    )
+      .bind(
+        "assignment_dismissed",
+        resolved.submission_type,
+        resolved.work_ref.submission_record_id,
+        resolved.work_ref.id,
+        assignment.id,
+        input.dismissed_by,
+        input.dismissed_by_username ?? null,
+        JSON.stringify({
+          assigned_username: assignment.assigned_username,
+          note: assignment.note,
+          status: assignment.status,
+        }),
+        now,
+      )
+      .run();
+
+    return { ok: true, resolved: { ...resolved, assignment: null }, assignment };
+  } catch {
+    return { ok: false, error: "database", resolved };
+  }
+}
+
 export async function sendWorkReporterUpdate(
   env: Env,
   input: {
