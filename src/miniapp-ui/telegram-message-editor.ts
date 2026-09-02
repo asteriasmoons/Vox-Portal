@@ -141,7 +141,7 @@ export class TelegramMessageEditor {
     if (action === "bold" || action === "italic" || action === "underline" || action === "strikeThrough") {
       document.execCommand(action as InlineCommand, false);
     } else if (action === "spoiler") {
-      this.toggleInlineWrapper("[data-tg-spoiler]", "span", { "data-tg-spoiler": "true", class: "tg-editor-spoiler" });
+      this.toggleSpoiler();
     } else if (action === "code") {
       this.toggleInlineWrapper("code", "code");
     } else if (action === "pre") {
@@ -186,6 +186,34 @@ export class TelegramMessageEditor {
       return;
     }
     this.wrapSelection(tagName, attrs);
+  }
+
+  private toggleSpoiler(): void {
+    const range = this.currentRange();
+    if (!range) return;
+
+    const selectedSpoilers = elementsIntersectingRange(this.editable, "[data-tg-spoiler]", range);
+    if (selectedSpoilers.length) {
+      for (const spoiler of selectedSpoilers) this.unwrapElement(spoiler);
+      return;
+    }
+
+    if (range.collapsed) {
+      this.wrapSelection("span", { "data-tg-spoiler": "true", class: "tg-editor-spoiler" });
+      return;
+    }
+
+    const marker = document.createTextNode("");
+    const fragment = range.extractContents();
+    applySpoilerToTextNodes(fragment);
+    fragment.appendChild(marker);
+    range.insertNode(fragment);
+
+    const next = document.createRange();
+    next.setStartAfter(marker);
+    next.collapse(true);
+    marker.remove();
+    this.setRange(next);
   }
 
   private unwrapElement(el: Element): void {
@@ -379,6 +407,7 @@ function normalizeImportedNode(root: ParentNode): void {
     span.append(...Array.from(spoiler.childNodes));
     spoiler.replaceWith(span);
   }
+  pushSpoilersInsideBlocks(root);
   for (const quote of Array.from(root.querySelectorAll("blockquote[expandable]"))) {
     quote.setAttribute("data-expandable", "true");
     quote.classList.add("tg-editor-expandable-quote");
@@ -412,7 +441,7 @@ function removeUnsafeNodes(root: ParentNode): void {
 }
 
 function isAllowedEditorElement(el: Element): boolean {
-  return ["B", "STRONG", "I", "EM", "U", "S", "STRIKE", "DEL", "SPAN", "CODE", "PRE", "BLOCKQUOTE", "A", "BR", "DIV", "HR"].includes(el.tagName);
+  return ["B", "STRONG", "I", "EM", "U", "S", "STRIKE", "DEL", "SPAN", "CODE", "PRE", "BLOCKQUOTE", "A", "BR", "DIV", "P", "HR"].includes(el.tagName);
 }
 
 function isAllowedEditorAttr(el: Element, attr: string): boolean {
@@ -436,9 +465,9 @@ function serializeTextNode(node: Node): string {
   if (!(node instanceof HTMLElement)) return "";
   const tag = node.tagName.toLowerCase();
   if (tag === "br") return "\n";
-  if (tag === "hr" && node.hasAttribute("data-divider")) return "\n---\n";
+  if (tag === "hr" && node.hasAttribute("data-divider")) return "\n---\n\n";
   const inner = Array.from(node.childNodes).map((child) => serializeTextNode(child)).join("");
-  if (tag === "div") return `${inner}\n`;
+  if (tag === "blockquote" || tag === "pre" || tag === "div" || tag === "p") return `${inner.trimEnd()}\n\n`;
   return inner;
 }
 
@@ -448,26 +477,81 @@ function serializeNode(node: Node): string {
 
   const tag = node.tagName.toLowerCase();
   const inner = Array.from(node.childNodes).map((child) => serializeNode(child)).join("");
-  if (tag === "hr" && node.hasAttribute("data-divider")) return "\n---\n";
+  if (tag === "hr" && node.hasAttribute("data-divider")) return "\n---\n\n";
+  if ((tag === "div" || tag === "p") && !inner) return "\n\n";
   if (!inner && tag !== "br") return "";
   if (tag === "br") return "\n";
   if (tag === "b" || tag === "strong") return `<b>${inner}</b>`;
   if (tag === "i" || tag === "em") return `<i>${inner}</i>`;
   if (tag === "u") return `<u>${inner}</u>`;
   if (tag === "s" || tag === "strike" || tag === "del") return `<s>${inner}</s>`;
-  if (tag === "span" && node.hasAttribute("data-tg-spoiler")) return `<tg-spoiler>${inner}</tg-spoiler>`;
+  if (tag === "span" && node.hasAttribute("data-tg-spoiler")) {
+    if (hasBlockChildren(node)) return Array.from(node.childNodes).map((child) => serializeSpoilerChild(child)).join("");
+    return `<tg-spoiler>${inner}</tg-spoiler>`;
+  }
   if (tag === "code" && node.parentElement?.tagName.toLowerCase() !== "pre") return `<code>${inner}</code>`;
-  if (tag === "pre") return `<pre>${escapeHtml(node.innerText.replace(/\u200b/g, ""))}</pre>`;
+  if (tag === "pre") return `<pre>${escapeHtml(node.innerText.replace(/\u200b/g, "").trimEnd())}</pre>\n\n`;
   if (tag === "blockquote") {
     const attr = node.hasAttribute("data-expandable") ? " expandable" : "";
-    return `<blockquote${attr}>${inner.trim()}</blockquote>`;
+    return `<blockquote${attr}>${inner.trim()}</blockquote>\n\n`;
   }
   if (tag === "a") {
     const href = safeUrl(node.getAttribute("href") ?? "");
     return href ? `<a href="${escapeAttr(href)}">${inner}</a>` : inner;
   }
-  if (tag === "div") return `${inner}\n`;
+  if (tag === "div" || tag === "p") return `${inner.trimEnd()}\n\n`;
   return inner;
+}
+
+function applySpoilerToTextNodes(root: ParentNode): void {
+  const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const textNodes: Text[] = [];
+  let current = walker.nextNode();
+  while (current) {
+    if ((current.textContent ?? "").replace(/\u200b/g, "").trim()) textNodes.push(current as Text);
+    current = walker.nextNode();
+  }
+  for (const text of textNodes) {
+    if (closestElement(text, "[data-tg-spoiler], pre, code", root as HTMLElement)) continue;
+    const span = document.createElement("span");
+    span.className = "tg-editor-spoiler";
+    span.setAttribute("data-tg-spoiler", "true");
+    text.replaceWith(span);
+    span.appendChild(text);
+  }
+}
+
+function pushSpoilersInsideBlocks(root: ParentNode): void {
+  for (const spoiler of Array.from(root.querySelectorAll("[data-tg-spoiler]"))) {
+    if (!hasBlockChildren(spoiler)) continue;
+    const fragment = document.createDocumentFragment();
+    while (spoiler.firstChild) fragment.appendChild(spoiler.firstChild);
+    applySpoilerToTextNodes(fragment);
+    spoiler.replaceWith(fragment);
+  }
+}
+
+function hasBlockChildren(node: Element): boolean {
+  return !!node.querySelector("blockquote, div, p, pre, hr");
+}
+
+function serializeSpoilerChild(node: Node): string {
+  if (node.nodeType === Node.TEXT_NODE) {
+    const text = escapeHtml(node.textContent ?? "");
+    return text.trim() ? `<tg-spoiler>${text}</tg-spoiler>` : text;
+  }
+  if (!(node instanceof HTMLElement)) return "";
+  return serializeNode(node);
+}
+
+function elementsIntersectingRange(root: HTMLElement, selector: string, range: Range): Element[] {
+  return Array.from(root.querySelectorAll(selector)).filter((el) => {
+    try {
+      return range.intersectsNode(el);
+    } catch {
+      return false;
+    }
+  });
 }
 
 function escapeHtml(text: string): string {
