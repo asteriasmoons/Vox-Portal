@@ -39,6 +39,15 @@ export async function handleWorkAssignmentCommand(
   if (!parsed) {
     const workId = extractWorkIdFromIncompleteArgs(args);
     const resolved = workId ? await resolveWorkId(env, workId) : null;
+    if (resolved && !commandAcceptsSubmissionType(cmd, resolved.submission_type)) {
+      await sendMessage(
+        env,
+        msg.chat.id,
+        renderWrongTypeMessage(cmd, resolved),
+        { ...workCommentReplyOptions(resolved, msg), parse_mode: "HTML" },
+      );
+      return true;
+    }
     await sendMessage(
       env,
       msg.chat.id,
@@ -153,6 +162,25 @@ function workCommentReplyOptions(
     : msg.reply_to_message?.message_id
       ? { reply_parameters: { message_id: msg.reply_to_message.message_id } }
       : commandReplyOptions(msg);
+}
+
+function commandAcceptsSubmissionType(
+  cmd: WorkCommandName,
+  submissionType: ResolvedWorkRef["submission_type"],
+): boolean {
+  return cmd === "case"
+    ? submissionType === "bug"
+    : submissionType === "idea" || submissionType === "beta";
+}
+
+function renderWrongTypeMessage(cmd: WorkCommandName, resolved: ResolvedWorkRef): string {
+  const expected = cmd === "case" ? "Bug Report" : "Idea or Beta Feedback";
+  const actual = resolved.submission_type === "bug"
+    ? "Bug Report"
+    : resolved.submission_type === "idea"
+    ? "Idea"
+    : "Beta Feedback";
+  return `${cmd === "case" ? "/case" : "/assign"} only accepts ${expected} Work IDs. That Work ID resolves to ${actual}.`;
 }
 
 function commandUsage(cmd: WorkCommandName): string {
