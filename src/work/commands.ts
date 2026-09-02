@@ -88,27 +88,23 @@ function parseAssignmentArgs(
     normalized = normalized.slice(botMention.length).trim();
   }
 
-  let match = normalized.match(/^(@[A-Za-z0-9_]{5,32})\s+([A-Za-z0-9]{6})\s+([\s\S]+)$/);
+  let match = normalized.match(/^(@[A-Za-z0-9_]{5,32})\s+([A-Za-z0-9]{6})(?:\s+([\s\S]+))?$/);
   if (match) {
-    const note = match[3].trim();
-    if (!note) return null;
     return {
       username: match[1],
       workId: match[2].toUpperCase(),
-      note,
+      note: (match[3] ?? "").trim(),
     };
   }
 
-  match = normalized.match(/^([A-Za-z0-9]{6})\s+([\s\S]+)$/);
-  const note = match?.[2]?.trim() ?? "";
-  if (!match || !note || !callerUsername) return null;
+  match = normalized.match(/^([A-Za-z0-9]{6})(?:\s+([\s\S]+))?$/);
+  if (!match || !callerUsername) return null;
   const username = normalizeMention(callerUsername);
   if (!username) return null;
-  if (!note) return null;
   return {
     username,
     workId: match[1].toUpperCase(),
-    note,
+    note: (match[2] ?? "").trim(),
   };
 }
 
@@ -132,60 +128,40 @@ function workCommentReplyOptions(
   msg: WorkCommandMessage,
 ): { message_thread_id?: number; reply_parameters?: { message_id: number } } {
   const row = resolved.submission;
-  const candidateIds = collectCommentCandidateIds(msg);
-  let threadId: number | null = msg.message_thread_id ?? null;
 
-  for (const candidate of candidateIds) {
-    if (
-      candidate === row.discussion_thread_id ||
-      candidate === row.discussion_message_id ||
-      candidate === row.report_message_id
-    ) {
-      threadId = row.discussion_thread_id ?? candidate;
-      break;
-    }
-  }
-
-  threadId = row.discussion_thread_id ?? threadId;
-  const replyMessageId = row.report_message_id ?? row.discussion_message_id ?? threadId;
-  if (threadId && replyMessageId) {
+  // Linked-channel comments are rooted at Telegram's automatic-forward mirror.
+  // Reply to that exact mirror, the same way the report itself is posted,
+  // instead of replying to the later rich-report message in the bare group.
+  const threadId = row.discussion_thread_id ?? row.discussion_message_id ?? null;
+  const rootMessageId = row.discussion_message_id ?? threadId;
+  if (threadId && rootMessageId) {
     return {
       message_thread_id: threadId,
-      reply_parameters: { message_id: replyMessageId },
+      reply_parameters: { message_id: rootMessageId },
     };
   }
+
   return msg.reply_to_message?.message_id
     ? { reply_parameters: { message_id: msg.reply_to_message.message_id } }
     : commandReplyOptions(msg);
-}
-
-function collectCommentCandidateIds(msg: WorkCommandMessage): Set<number> {
-  const candidateIds = new Set<number>();
-  if (msg.message_thread_id) candidateIds.add(msg.message_thread_id);
-  let reply = msg.reply_to_message;
-  for (let depth = 0; reply && depth < 8; depth++, reply = reply.reply_to_message) {
-    if (reply.message_id) candidateIds.add(reply.message_id);
-    if (reply.message_thread_id) candidateIds.add(reply.message_thread_id);
-  }
-  return candidateIds;
 }
 
 function commandUsage(cmd: WorkCommandName): string {
   if (cmd === "case") {
     return [
       "<b>Usage:</b>",
-      "/case &lt;username&gt; &lt;workID&gt; &lt;note&gt;",
+      "/case &lt;username&gt; &lt;workID&gt; [note]",
       "",
       "<b>Example:</b>",
-      "/case @alex 7KQ3XM Investigating the reminder completion issue",
+      "/case @alex 7KQ3XM",
     ].join("\n");
   }
   return [
     "<b>Usage:</b>",
-    "/assign &lt;username&gt; &lt;workID&gt; &lt;note&gt;",
+    "/assign &lt;username&gt; &lt;workID&gt; [note]",
     "",
     "<b>Example:</b>",
-    "/assign @alex M4PX8C Building this because I already work on this feature area",
+    "/assign @alex M4PX8C",
   ].join("\n");
 }
 
@@ -205,8 +181,8 @@ function renderAssignmentConfirmation(
     `<blockquote>Work ID: ${esc(result.resolved.work_ref.work_id)}</blockquote>`,
     "",
     `Assigned to: ${esc(result.assignment.assigned_username)}`,
-    `Note: ${esc(result.assignment.note)}`,
-  ].join("\n");
+    result.assignment.note ? `Note: ${esc(result.assignment.note)}` : null,
+  ].filter(Boolean).join("\n");
 }
 
 function renderAssignmentError(
