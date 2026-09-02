@@ -1,5 +1,5 @@
 import type { Env } from "../config";
-import { channelId, discussionChatId, isAdmin } from "../config";
+import { discussionChatId, isAdmin } from "../config";
 import { sendMessage } from "../telegram/api";
 import { assignWork, isWorkIdFormat, type ResolvedWorkRef } from "./service";
 import { esc } from "../util/html";
@@ -26,11 +26,13 @@ export async function handleWorkAssignmentCommand(
   args: string,
 ): Promise<boolean> {
   const threadOpts = commandReplyOptions(msg);
-  const authorized = isAuthorizedWorkCommand(env, msg);
-  if (!authorized) {
-    await sendMessage(env, msg.chat.id, "This command is admin-only.", threadOpts);
-    return true;
-  }
+
+  // Keep the work-command authorization semantics identical to /reason.
+  // handleAdminGroupCommand already applies this gate before dispatching here,
+  // but retain it defensively for direct callers/tests.
+  const anonymousAdmin = msg.sender_chat?.id === discussionChatId(env);
+  const userAdmin = !!msg.from && isAdmin(env, msg.from.id);
+  if (!anonymousAdmin && !userAdmin) return false;
 
   const usage = commandUsage(cmd);
   const parsed = parseAssignmentArgs(args, env.BOT_USERNAME, msg.from?.username);
@@ -119,16 +121,6 @@ function isTelegramUsername(value: string): boolean {
   return /^@[A-Za-z0-9_]{5,32}$/.test(value);
 }
 
-function isAuthorizedWorkCommand(env: Env, msg: WorkCommandMessage): boolean {
-  if (msg.from && isAdmin(env, msg.from.id)) return true;
-  const senderChatId = msg.sender_chat?.id;
-  if (!senderChatId) return false;
-  const chatId = msg.chat.id;
-  const configured = configuredInternalChatIds(env);
-  if (configured.has(chatId) || configured.has(senderChatId)) return true;
-  return msg.chat.type !== "private" && senderChatId === chatId;
-}
-
 function commandReplyOptions(msg: WorkCommandMessage): { message_thread_id?: number; reply_parameters?: { message_id: number } } {
   if (msg.message_thread_id) return { message_thread_id: msg.message_thread_id };
   if (msg.message_id) return { reply_parameters: { message_id: msg.message_id } };
@@ -176,15 +168,6 @@ function collectCommentCandidateIds(msg: WorkCommandMessage): Set<number> {
     if (reply.message_thread_id) candidateIds.add(reply.message_thread_id);
   }
   return candidateIds;
-}
-
-function configuredInternalChatIds(env: Env): Set<number> {
-  const ids = new Set<number>([channelId(env), discussionChatId(env)]);
-  for (const raw of (env.JOIN_APPROVAL_CHAT_IDS ?? "").split(",")) {
-    const id = Number(raw.trim());
-    if (Number.isFinite(id)) ids.add(id);
-  }
-  return ids;
 }
 
 function commandUsage(cmd: WorkCommandName): string {
