@@ -1,7 +1,7 @@
 import type { Env } from "../config";
 import { channelId, discussionChatId, isAdmin } from "../config";
 import { sendMessage } from "../telegram/api";
-import { assignWork, isWorkIdFormat } from "./service";
+import { assignWork, isWorkIdFormat, type ResolvedWorkRef } from "./service";
 import { esc } from "../util/html";
 
 type WorkCommandName = "case" | "assign";
@@ -56,14 +56,21 @@ export async function handleWorkAssignmentCommand(
   });
 
   if (!result.ok) {
-    await sendMessage(env, msg.chat.id, renderAssignmentError(cmd, result), { ...threadOpts, parse_mode: "HTML" });
+    await sendMessage(
+      env,
+      result.resolved ? discussionChatId(env) : msg.chat.id,
+      renderAssignmentError(cmd, result),
+      { ...(result.resolved ? workCommentReplyOptions(result.resolved, msg) : threadOpts), parse_mode: "HTML" },
+    );
     return true;
   }
 
-  await sendMessage(env, msg.chat.id, renderAssignmentConfirmation(cmd, result), {
-    ...threadOpts,
-    parse_mode: "HTML",
-  });
+  await sendMessage(
+    env,
+    discussionChatId(env),
+    renderAssignmentConfirmation(cmd, result),
+    { ...workCommentReplyOptions(result.resolved, msg), parse_mode: "HTML" },
+  );
   return true;
 }
 
@@ -125,6 +132,22 @@ function commandReplyOptions(msg: WorkCommandMessage): { message_thread_id?: num
   if (msg.message_thread_id) return { message_thread_id: msg.message_thread_id };
   if (msg.message_id) return { reply_parameters: { message_id: msg.message_id } };
   return {};
+}
+
+function workCommentReplyOptions(
+  resolved: ResolvedWorkRef,
+  msg: WorkCommandMessage,
+): { message_thread_id?: number; reply_parameters?: { message_id: number } } {
+  const row = resolved.submission;
+  const rootMessageId = row.report_message_id ?? row.discussion_message_id ?? row.discussion_thread_id ?? null;
+  if (row.discussion_thread_id && rootMessageId) {
+    return {
+      message_thread_id: row.discussion_thread_id,
+      reply_parameters: { message_id: rootMessageId },
+    };
+  }
+  if (rootMessageId) return { reply_parameters: { message_id: rootMessageId } };
+  return commandReplyOptions(msg);
 }
 
 function configuredInternalChatIds(env: Env): Set<number> {
